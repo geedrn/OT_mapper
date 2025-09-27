@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# R / RStudio
+.Rhistory
+*.Rhistory
+.Rapp.history
+.RData
+*.Rds
+.Ruserdata
+.Rproj.user/
+*.Rproj
+.Renviron
+
+# Editors/IDEs
+.vscode/
+.idea/
+.history
+.fleet/
+
+# Logs
+*.log
+nohup.out
+
+# Temp/swap files
+*~
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Shell history (if accidentally placed)
+.bash_history
+
+# Data directories (ignore all but README)
+R/data/*
+!R/data/README.md
+bash/data/*
+!bash/data/README.md
+
+# Python cache (if any)
+__pycache__/
+*.pyc

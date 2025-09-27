@@ -1,0 +1,769 @@
+#' GGGenomeからデータを取得してデータフレームに変換（PAM対応版）
+#'
+#' @param spacer gRNAスペーサー配列（例："TCGCCCAGCGACCCTGCTCC"）
+#' @param seed_length シード配列の長さ
+#' @param pam PAM配列（例："NGG"）
+#' @return 全長データとシード配列データのリスト（+/-鎖）
+gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG") {
+  if (missing(spacer) || !is.character(spacer) || length(spacer) != 1) {
+    stop("spacerは1つの文字列である必要があります")
+  }
+  
+  if (missing(seed_length) || !is.numeric(seed_length) || seed_length <= 0) {
+    stop("seed_lengthは正の数である必要があります")
+  }
+  
+  if (!is.character(pam) || length(pam) != 1) {
+    stop("pamは1つの文字列である必要があります")
+  }
+  
+  # スペーサーとPAMを結合
+  sequence_with_pam <- paste0(spacer, pam)
+  
+  message("GGGenome検索を実行中:")
+  message("スペーサー: ", spacer)
+  message("PAM: ", pam)
+  message("検索配列: ", sequence_with_pam)
+  message("シード長: ", seed_length)
+  
+  # シード配列を抽出（スペーサーの3'末端側）
+  seed <- substr(spacer, nchar(spacer) - seed_length + 1, nchar(spacer))
+  seed_with_pam <- paste0(seed, pam)
+  
+  message("抽出したシード配列: ", seed)
+  message("PAM付きシード配列: ", seed_with_pam)
+  
+  # 一時ファイルのパスを設定
+  temp_dir <- tempdir()
+  plus_full_file <- file.path(temp_dir, "plus_full.csv")
+  minus_full_file <- file.path(temp_dir, "minus_full.csv")
+  plus_seed_file <- file.path(temp_dir, "plus_seed.csv")
+  minus_seed_file <- file.path(temp_dir, "minus_seed.csv")
+  
+  message("ダウンロード先ディレクトリ: ", temp_dir)
+  message("ファイルパス:")
+  message("- 全長 + 鎖: ", plus_full_file)
+  message("- 全長 - 鎖: ", minus_full_file)
+  message("- シード + 鎖: ", plus_seed_file)
+  message("- シード - 鎖: ", minus_seed_file)
+  
+  # GGGenome APIのURL（ヒトゲノムhg38、ミスマッチ設定）
+  # PAMを含めた検索を行う
+  plus_full_url <- paste0("https://gggenome.dbcls.jp/hg38/3/+/nogap/", sequence_with_pam, ".csv")
+  minus_full_url <- paste0("https://gggenome.dbcls.jp/hg38/3/-/nogap/", sequence_with_pam, ".csv")
+  
+  # シード配列のAPI URL（1ミスマッチまで許容、PAMを含む）
+  plus_seed_url <- paste0("https://gggenome.dbcls.jp/hg38/1/+/nogap/", seed_with_pam, ".csv")
+  minus_seed_url <- paste0("https://gggenome.dbcls.jp/hg38/1/-/nogap/", seed_with_pam, ".csv")
+  
+  message("GGGenome APIを呼び出し中...")
+  message("【全長配列検索】")
+  message("+ 鎖 URL: ", plus_full_url)
+  message("- 鎖 URL: ", minus_full_url)
+  
+  # 全長データのダウンロード
+  download_success_plus_full <- tryCatch({
+    utils::download.file(plus_full_url, plus_full_file, quiet = FALSE)
+    TRUE
+  }, error = function(e) {
+    message("+ 鎖全長データのダウンロードに失敗しました: ", e$message)
+    FALSE
+  })
+  
+  download_success_minus_full <- tryCatch({
+    utils::download.file(minus_full_url, minus_full_file, quiet = FALSE)
+    TRUE
+  }, error = function(e) {
+    message("- 鎖全長データのダウンロードに失敗しました: ", e$message)
+    FALSE
+  })
+  
+  message("【シード配列検索】")
+  message("+ 鎖 URL: ", plus_seed_url)
+  message("- 鎖 URL: ", minus_seed_url)
+  
+  # シード配列データのダウンロード
+  download_success_plus_seed <- tryCatch({
+    utils::download.file(plus_seed_url, plus_seed_file, quiet = FALSE)
+    TRUE
+  }, error = function(e) {
+    message("+ 鎖シードデータのダウンロードに失敗しました: ", e$message)
+    FALSE
+  })
+  
+  download_success_minus_seed <- tryCatch({
+    utils::download.file(minus_seed_url, minus_seed_file, quiet = FALSE)
+    TRUE
+  }, error = function(e) {
+    message("- 鎖シードデータのダウンロードに失敗しました: ", e$message)
+    FALSE
+  })
+  
+  # ダウンロードしたCSVファイルを処理する関数
+  process_gggenome_file <- function(file_path) {
+    if (!file.exists(file_path) || file.size(file_path) == 0) {
+      message("ファイルが存在しないか空です: ", file_path)
+      return(data.frame())
+    }
+    
+    # ファイル全体を読み込む
+    lines <- readLines(file_path)
+    
+    # コメント行を除外
+    data_lines <- lines[!grepl("^#", lines)]
+    
+    if (length(data_lines) == 0) {
+      message("データ行が見つかりません")
+      return(data.frame())
+    }
+    
+    # データフレームに変換
+    result <- tryCatch({
+      # タブをカンマに置き換えてcsvとして読み込む
+      temp_file <- tempfile(fileext = ".csv")
+      writeLines(gsub("\t", ",", data_lines), temp_file)
+      df <- read.csv(temp_file, header = FALSE, stringsAsFactors = FALSE)
+      unlink(temp_file)
+      
+      # 列名を設定
+      col_names <- c("chrom", "strand", "start", "end", "snippet", "snippet_pos", 
+                     "snippet_end", "query", "sbjct", "align", "edit", "match", 
+                     "mis", "del", "ins")
+      
+      colnames(df) <- col_names[1:min(ncol(df), length(col_names))]
+      
+      # 数値型に変換
+      for (col in c("start", "end", "match", "mis", "del", "ins")) {
+        if (col %in% colnames(df)) {
+          df[[col]] <- suppressWarnings(as.integer(df[[col]]))
+        }
+      }
+      
+      # 位置情報を追加
+      if (all(c("chrom", "start", "end") %in% colnames(df))) {
+        df$location <- paste0(df$chrom, ":", df$start, "-", df$end)
+      }
+      
+      df
+    }, error = function(e) {
+      message("ファイルの解析に失敗しました: ", e$message)
+      return(data.frame())
+    })
+    
+    return(result)
+  }
+  
+  # ダウンロードした結果を処理
+  plus_full_df <- if (download_success_plus_full) process_gggenome_file(plus_full_file) else data.frame()
+  minus_full_df <- if (download_success_minus_full) process_gggenome_file(minus_full_file) else data.frame()
+  plus_seed_df <- if (download_success_plus_seed) process_gggenome_file(plus_seed_file) else data.frame()
+  minus_seed_df <- if (download_success_minus_seed) process_gggenome_file(minus_seed_file) else data.frame()
+  
+  # 結果件数の表示
+  message("【検索結果】")
+  message("全長配列 + 鎖の結果: ", nrow(plus_full_df), " 件")
+  message("全長配列 - 鎖の結果: ", nrow(minus_full_df), " 件")
+  message("シード配列 + 鎖の結果: ", nrow(plus_seed_df), " 件")
+  message("シード配列 - 鎖の結果: ", nrow(minus_seed_df), " 件")
+  
+  # 結果をリストとして返す
+  result <- list(
+    plus_full = plus_full_df,
+    minus_full = minus_full_df,
+    plus_seed = plus_seed_df,
+    minus_seed = minus_seed_df,
+    spacer = spacer,
+    seed = seed,
+    pam = pam,
+    full_sequence = sequence_with_pam,
+    seed_sequence = seed_with_pam
+  )
+  
+  return(result)
+}
+
+#' シード配列と全長配列のオーバーラップを抽出する関数（PAM対応版）
+#'
+#' @param list PAM対応版gggenome_to_dataframe関数の結果リスト
+#' @param use_bedtools bedtoolsを使用するかどうか
+#' @return オーバーラップ結果を含むリスト
+#' シード配列と全長配列のオーバーラップを抽出する関数（PAM対応版、全長配列出力）
+#'
+#' @param list PAM対応版gggenome_to_dataframe関数の結果リスト
+#' @param use_bedtools bedtoolsを使用するかどうか
+#' @return オーバーラップ結果を含むリスト（全長配列データを出力）
+find_overlaps <- function(list, use_bedtools = TRUE) {
+  message("シード配列と全長配列のオーバーラップを検出中...")
+  
+  # 入力チェック
+  if (!is.list(list) || !all(c("plus_full", "minus_full", "plus_seed", "minus_seed") %in% names(list))) {
+    stop("listはgggenome_to_dataframe関数の結果である必要があります")
+  }
+  
+  # bedtoolsのインストール確認
+  bedtools_installed <- use_bedtools && (system("which bedtools", ignore.stdout = TRUE) == 0)
+  if (use_bedtools && !bedtools_installed) {
+    message("bedtoolsが見つかりません。Rの内部処理でオーバーラップを検出します。")
+  }
+  
+  # 処理用の一時ディレクトリ
+  temp_dir <- tempdir()
+  
+  # 1. プラス鎖のオーバーラップ検出
+  message("プラス鎖のオーバーラップを検出中...")
+  plus_overlaps <- data.frame()
+  
+  if (nrow(list$plus_full) > 0 && nrow(list$plus_seed) > 0) {
+    if (bedtools_installed) {
+      # BEDファイル作成
+      plus_full_bed <- file.path(temp_dir, "plus_full.bed")
+      plus_seed_bed <- file.path(temp_dir, "plus_seed.bed")
+      plus_overlap_bed <- file.path(temp_dir, "plus_overlap.bed")
+      
+      # 全長配列をBED形式で保存
+      write.table(
+        data.frame(
+          list$plus_full$chrom,
+          list$plus_full$start,
+          list$plus_full$end,
+          paste0("full_", 1:nrow(list$plus_full)),
+          rep(0, nrow(list$plus_full)),
+          list$plus_full$strand
+        ),
+        plus_full_bed,
+        quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t"
+      )
+      
+      # シード配列をBED形式で保存
+      write.table(
+        data.frame(
+          list$plus_seed$chrom,
+          list$plus_seed$start,
+          list$plus_seed$end,
+          paste0("seed_", 1:nrow(list$plus_seed)),
+          rep(0, nrow(list$plus_seed)),
+          list$plus_seed$strand
+        ),
+        plus_seed_bed,
+        quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t"
+      )
+      
+      # bedtools intersectで重なりを検出
+      # -bを先に指定して-waを使用することで、全長配列(plus_full_bed)を出力
+      cmd <- paste("bedtools intersect -b", plus_seed_bed, "-a", plus_full_bed, "-wa >", plus_overlap_bed)
+      system(cmd)
+      
+      # 結果読み込み
+      if (file.exists(plus_overlap_bed) && file.size(plus_overlap_bed) > 0) {
+        overlap_bed <- read.table(plus_overlap_bed, sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+        colnames(overlap_bed) <- c("chrom", "start", "end", "name", "score", "strand")
+        
+        # 元のデータフレームから一致する行を抽出
+        idx <- numeric(0)
+        for (i in 1:nrow(overlap_bed)) {
+          matches <- which(
+            list$plus_full$chrom == overlap_bed$chrom[i] &
+              list$plus_full$start == overlap_bed$start[i] &
+              list$plus_full$end == overlap_bed$end[i] &
+              list$plus_full$strand == overlap_bed$strand[i]
+          )
+          idx <- c(idx, matches)
+        }
+        
+        if (length(idx) > 0) {
+          plus_overlaps <- list$plus_full[idx, ]
+        }
+      }
+    } else {
+      # Rでの処理: メモリを節約するために分割処理
+      batch_size <- 1000
+      batches <- ceiling(nrow(list$plus_seed) / batch_size)
+      
+      for (b in 1:batches) {
+        start_idx <- (b - 1) * batch_size + 1
+        end_idx <- min(b * batch_size, nrow(list$plus_seed))
+        
+        # 現在のバッチ
+        current_batch <- list$plus_seed[start_idx:end_idx, ]
+        
+        # オーバーラップ検出 - 全長配列を収集
+        for (i in 1:nrow(current_batch)) {
+          # 重なりのある全長配列のインデックスを見つける
+          overlap_idx <- which(
+            list$plus_full$chrom == current_batch$chrom[i] &
+              (
+                (list$plus_full$start <= current_batch$start[i] & list$plus_full$end >= current_batch$start[i]) |
+                  (list$plus_full$start <= current_batch$end[i] & list$plus_full$end >= current_batch$end[i]) |
+                  (list$plus_full$start >= current_batch$start[i] & list$plus_full$end <= current_batch$end[i])
+              ) &
+              list$plus_full$strand == current_batch$strand[i]
+          )
+          
+          if (length(overlap_idx) > 0) {
+            # 重なりのある全長配列を追加
+            plus_overlaps <- rbind(plus_overlaps, list$plus_full[overlap_idx, ])
+          }
+        }
+        
+        # 進捗表示
+        if (b %% 10 == 0 || b == batches) {
+          message(sprintf("  プラス鎖 - バッチ処理: %d/%d 完了", b, batches))
+        }
+      }
+      
+      # 重複を削除（同じ全長配列が複数のシード配列と重なる場合）
+      if (nrow(plus_overlaps) > 0) {
+        plus_overlaps <- unique(plus_overlaps)
+      }
+    }
+  }
+  
+  # 2. マイナス鎖のオーバーラップ検出
+  message("マイナス鎖のオーバーラップを検出中...")
+  minus_overlaps <- data.frame()
+  
+  if (nrow(list$minus_full) > 0 && nrow(list$minus_seed) > 0) {
+    if (bedtools_installed) {
+      # BEDファイル作成
+      minus_full_bed <- file.path(temp_dir, "minus_full.bed")
+      minus_seed_bed <- file.path(temp_dir, "minus_seed.bed")
+      minus_overlap_bed <- file.path(temp_dir, "minus_overlap.bed")
+      
+      # 全長配列をBED形式で保存
+      write.table(
+        data.frame(
+          list$minus_full$chrom,
+          list$minus_full$start,
+          list$minus_full$end,
+          paste0("full_", 1:nrow(list$minus_full)),
+          rep(0, nrow(list$minus_full)),
+          list$minus_full$strand
+        ),
+        minus_full_bed,
+        quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t"
+      )
+      
+      # シード配列をBED形式で保存
+      write.table(
+        data.frame(
+          list$minus_seed$chrom,
+          list$minus_seed$start,
+          list$minus_seed$end,
+          paste0("seed_", 1:nrow(list$minus_seed)),
+          rep(0, nrow(list$minus_seed)),
+          list$minus_seed$strand
+        ),
+        minus_seed_bed,
+        quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t"
+      )
+      
+      # bedtools intersectで重なりを検出
+      # -bを先に指定して-waを使用することで、全長配列(minus_full_bed)を出力
+      cmd <- paste("bedtools intersect -b", minus_seed_bed, "-a", minus_full_bed, "-wa >", minus_overlap_bed)
+      system(cmd)
+      
+      # 結果読み込み
+      if (file.exists(minus_overlap_bed) && file.size(minus_overlap_bed) > 0) {
+        overlap_bed <- read.table(minus_overlap_bed, sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+        colnames(overlap_bed) <- c("chrom", "start", "end", "name", "score", "strand")
+        
+        # 元のデータフレームから一致する行を抽出
+        idx <- numeric(0)
+        for (i in 1:nrow(overlap_bed)) {
+          matches <- which(
+            list$minus_full$chrom == overlap_bed$chrom[i] &
+              list$minus_full$start == overlap_bed$start[i] &
+              list$minus_full$end == overlap_bed$end[i] &
+              list$minus_full$strand == overlap_bed$strand[i]
+          )
+          idx <- c(idx, matches)
+        }
+        
+        if (length(idx) > 0) {
+          minus_overlaps <- list$minus_full[idx, ]
+        }
+      }
+    } else {
+      # Rでの処理: メモリを節約するために分割処理
+      batch_size <- 1000
+      batches <- ceiling(nrow(list$minus_seed) / batch_size)
+      
+      for (b in 1:batches) {
+        start_idx <- (b - 1) * batch_size + 1
+        end_idx <- min(b * batch_size, nrow(list$minus_seed))
+        
+        # 現在のバッチ
+        current_batch <- list$minus_seed[start_idx:end_idx, ]
+        
+        # オーバーラップ検出 - 全長配列を収集
+        for (i in 1:nrow(current_batch)) {
+          # 重なりのある全長配列のインデックスを見つける
+          overlap_idx <- which(
+            list$minus_full$chrom == current_batch$chrom[i] &
+              (
+                (list$minus_full$start <= current_batch$start[i] & list$minus_full$end >= current_batch$start[i]) |
+                  (list$minus_full$start <= current_batch$end[i] & list$minus_full$end >= current_batch$end[i]) |
+                  (list$minus_full$start >= current_batch$start[i] & list$minus_full$end <= current_batch$end[i])
+              ) &
+              list$minus_full$strand == current_batch$strand[i]
+          )
+          
+          if (length(overlap_idx) > 0) {
+            # 重なりのある全長配列を追加
+            minus_overlaps <- rbind(minus_overlaps, list$minus_full[overlap_idx, ])
+          }
+        }
+        
+        # 進捗表示
+        if (b %% 10 == 0 || b == batches) {
+          message(sprintf("  マイナス鎖 - バッチ処理: %d/%d 完了", b, batches))
+        }
+      }
+      
+      # 重複を削除（同じ全長配列が複数のシード配列と重なる場合）
+      if (nrow(minus_overlaps) > 0) {
+        minus_overlaps <- unique(minus_overlaps)
+      }
+    }
+  }
+  
+  # 結果表示
+  message(sprintf("プラス鎖オーバーラップ: %d件（全長配列）", nrow(plus_overlaps)))
+  message(sprintf("マイナス鎖オーバーラップ: %d件（全長配列）", nrow(minus_overlaps)))
+  
+  # 結果を返す
+  result <- list(
+    plus_overlaps = plus_overlaps,
+    minus_overlaps = minus_overlaps,
+    spacer = list$spacer,
+    seed = list$seed,
+    pam = list$pam
+  )
+  
+  # 元のリストからメタデータがあれば追加
+  metadata_fields <- c("full_sequence", "seed_sequence")
+  for (field in metadata_fields) {
+    if (!is.null(list[[field]])) {
+      result[[field]] <- list[[field]]
+    }
+  }
+  
+  return(result)
+}
+
+#' PAMが完全一致する配列のみをフィルタリングする関数
+#'
+#' @param results gggenome_to_dataframe関数またはfind_overlaps関数の結果
+#' @param pam 期待するPAM配列（デフォルト: "NGG"）
+#' @return PAMが完全一致する配列のみを含むリスト
+filter_exact_pam <- function(results, pam = "NGG") {
+  message("PAMが完全一致する配列をフィルタリングしています...")
+  message("対象PAM: ", pam)
+  
+  # 入力チェック
+  if (!is.list(results)) {
+    stop("resultsはリスト形式である必要があります")
+  }
+  
+  # 入力タイプを判別
+  is_overlaps_result <- all(c("plus_overlaps", "minus_overlaps") %in% names(results))
+  is_gggenome_result <- all(c("plus_full", "minus_full", "plus_seed", "minus_seed") %in% names(results))
+  
+  if (!is_overlaps_result && !is_gggenome_result) {
+    stop("サポートされていない結果形式です")
+  }
+  
+  # PAMの長さを取得
+  pam_length <- nchar(pam)
+  
+  # PAM位置のミスマッチをチェックする関数
+  check_pam_match <- function(df, strand, pam, spacer_length = NULL) {
+    if (nrow(df) == 0 || !("sbjct" %in% colnames(df)) || !("align" %in% colnames(df))) {
+      message(strand, "鎖のデータが空または必要な列がありません")
+      return(data.frame())
+    }
+    
+    # alignmentからPAM部分のみを抽出
+    selected <- logical(nrow(df))
+    
+    for (i in 1:nrow(df)) {
+      alignment <- df$align[i]
+      
+      # alignment文字列の長さがsbjctより短い場合があるため修正
+      if (nchar(alignment) < nchar(df$sbjct[i])) {
+        alignment <- paste0(alignment, paste(rep("?", nchar(df$sbjct[i]) - nchar(alignment)), collapse = ""))
+      }
+      
+      # PAM部分のalignmentを抽出
+      if (strand == "+") {
+        # プラス鎖: 配列末尾にPAM
+        if (is.null(spacer_length)) {
+          # sbjctから末尾のPAM部分のみを抽出
+          pam_part <- substr(alignment, nchar(alignment) - pam_length + 1, nchar(alignment))
+        } else {
+          # spacer_lengthが指定されている場合はそれを使用
+          pam_part <- substr(alignment, spacer_length + 1, spacer_length + pam_length)
+        }
+      } else {
+        # マイナス鎖: 配列先頭にPAM（逆相補配列）
+        pam_part <- substr(alignment, 1, pam_length)
+      }
+      
+      # PAM部分に完全一致（"="のみ）があるかチェック
+      # Nの位置は任意の塩基が許容されるので"X"や"="
+      is_match <- TRUE
+      for (j in 1:pam_length) {
+        pam_char <- substr(pam, j, j)
+        align_char <- substr(pam_part, j, j)
+        
+        if (pam_char == "N") {
+          # Nの場合は任意の塩基可
+          is_match <- is_match && (align_char %in% c("=", "X"))
+        } else {
+          # それ以外は完全一致が必要
+          is_match <- is_match && (align_char == "=")
+        }
+      }
+      
+      selected[i] <- is_match
+    }
+    
+    # フィルタリング結果の確認
+    message(strand, "鎖: ", sum(selected), "/", nrow(df), " 件が完全PAM一致")
+    
+    return(df[selected, ])
+  }
+  
+  # 結果構造に応じたフィルタリング
+  if (is_overlaps_result) {
+    # find_overlaps結果の処理
+    plus_filtered <- check_pam_match(results$plus_overlaps, "+", pam)
+    minus_filtered <- check_pam_match(results$minus_overlaps, "-", pam)
+    
+    # 元のメタデータを保持しつつ、フィルタリング結果を返す
+    filtered_results <- results
+    filtered_results$plus_overlaps <- plus_filtered
+    filtered_results$minus_overlaps <- minus_filtered
+    filtered_results$pam_filtered <- TRUE
+  } else {
+    # gggenome_to_dataframe結果の処理
+    plus_full_filtered <- check_pam_match(results$plus_full, "+", pam)
+    minus_full_filtered <- check_pam_match(results$minus_full, "-", pam)
+    plus_seed_filtered <- check_pam_match(results$plus_seed, "+", pam)
+    minus_seed_filtered <- check_pam_match(results$minus_seed, "-", pam)
+    
+    # 元のメタデータを保持しつつ、フィルタリング結果を返す
+    filtered_results <- results
+    filtered_results$plus_full <- plus_full_filtered
+    filtered_results$minus_full <- minus_full_filtered
+    filtered_results$plus_seed <- plus_seed_filtered
+    filtered_results$minus_seed <- minus_seed_filtered
+    filtered_results$pam_filtered <- TRUE
+  }
+  
+  # 要約を表示
+  message("PAM完全一致フィルタリング完了")
+  
+  return(filtered_results)
+}
+
+#' PAMが完全一致する配列のみをフィルタリングする関数（修正版）
+#'
+#' @param results gggenome_to_dataframe関数またはfind_overlaps関数の結果
+#' @param pam 期待するPAM配列（デフォルト: "NGG"）
+#' @return PAMが完全一致する配列のみを含むリスト
+filter_exact_pam <- function(results, pam = "NGG") {
+  message("PAMが完全一致する配列をフィルタリングしています...")
+  message("対象PAM: ", pam)
+  
+  # 入力チェック
+  if (!is.list(results)) {
+    stop("resultsはリスト形式である必要があります")
+  }
+  
+  # 入力タイプを判別
+  is_overlaps_result <- all(c("plus_overlaps", "minus_overlaps") %in% names(results))
+  is_gggenome_result <- all(c("plus_full", "minus_full", "plus_seed", "minus_seed") %in% names(results))
+  
+  if (!is_overlaps_result && !is_gggenome_result) {
+    stop("サポートされていない結果形式です")
+  }
+  
+  # PAMの長さを取得
+  pam_length <- nchar(pam)
+  
+  # PAM位置のミスマッチをチェックする関数
+  check_pam_match <- function(df, strand, pam) {
+    if (nrow(df) == 0 || !("sbjct" %in% colnames(df))) {
+      message(strand, "鎖のデータが空または必要な列がありません")
+      return(data.frame())
+    }
+    
+    # PAMの配列を抽出して一致するか確認
+    selected <- logical(nrow(df))
+    
+    for (i in 1:nrow(df)) {
+      sequence <- df$sbjct[i]
+      
+      if (is.na(sequence) || nchar(sequence) < pam_length) {
+        selected[i] <- FALSE
+        next
+      }
+      
+      # PAM部分の塩基配列を抽出
+      if (strand == "+") {
+        # プラス鎖: 配列末尾にPAM
+        pam_part <- substr(sequence, nchar(sequence) - pam_length + 1, nchar(sequence))
+      } else {
+        # マイナス鎖: 配列先頭にPAM（逆相補配列）
+        # PAMの逆相補を作成
+        reverse_complement <- function(seq) {
+          comp <- chartr("ACGT", "TGCA", seq)
+          paste(rev(strsplit(comp, "")[[1]]), collapse = "")
+        }
+        
+        pam_rc <- reverse_complement(pam)
+        pam_part <- substr(sequence, 1, pam_length)
+        
+        # マイナス鎖の場合はPAMの逆相補と比較
+        pam <- pam_rc
+      }
+      
+      # PAM部分が一致するかチェック
+      is_match <- TRUE
+      for (j in 1:pam_length) {
+        pam_char <- substr(pam, j, j)
+        seq_char <- substr(pam_part, j, j)
+        
+        if (pam_char == "N") {
+          # Nの場合は任意の塩基可
+          is_match <- is_match && (seq_char %in% c("A", "C", "G", "T"))
+        } else {
+          # それ以外は完全一致が必要
+          is_match <- is_match && (pam_char == seq_char)
+        }
+      }
+      
+      selected[i] <- is_match
+    }
+    
+    # フィルタリング結果の確認
+    message(strand, "鎖: ", sum(selected), "/", nrow(df), " 件が完全PAM一致")
+    
+    return(df[selected, ])
+  }
+  
+  # 結果構造に応じたフィルタリング
+  if (is_overlaps_result) {
+    # find_overlaps結果の処理
+    plus_filtered <- check_pam_match(results$plus_overlaps, "+", pam)
+    minus_filtered <- check_pam_match(results$minus_overlaps, "-", pam)
+    
+    # 元のメタデータを保持しつつ、フィルタリング結果を返す
+    filtered_results <- results
+    filtered_results$plus_overlaps <- plus_filtered
+    filtered_results$minus_overlaps <- minus_filtered
+    filtered_results$pam_filtered <- TRUE
+  } else {
+    # gggenome_to_dataframe結果の処理
+    plus_full_filtered <- check_pam_match(results$plus_full, "+", pam)
+    minus_full_filtered <- check_pam_match(results$minus_full, "-", pam)
+    plus_seed_filtered <- check_pam_match(results$plus_seed, "+", pam)
+    minus_seed_filtered <- check_pam_match(results$minus_seed, "-", pam)
+    
+    # 元のメタデータを保持しつつ、フィルタリング結果を返す
+    filtered_results <- results
+    filtered_results$plus_full <- plus_full_filtered
+    filtered_results$minus_full <- minus_full_filtered
+    filtered_results$plus_seed <- plus_seed_filtered
+    filtered_results$minus_seed <- minus_seed_filtered
+    filtered_results$pam_filtered <- TRUE
+  }
+  
+  # 要約を表示
+  message("PAM完全一致フィルタリング完了")
+  
+  return(filtered_results)
+}
+
+#' CRISPR解析結果を1つのデータフレームに結合する
+#'
+#' @param results find_overlaps関数またはfilter_exact_pam関数の結果
+#' @param include_metadata メタデータ列を含めるかどうか
+#' @return 結合されたデータフレーム
+combine_results <- function(results, include_metadata = TRUE) {
+  message("解析結果を1つのデータフレームに結合しています...")
+  
+  # 入力チェック
+  if (!is.list(results)) {
+    stop("resultsはリスト形式である必要があります")
+  }
+  
+  # 結果タイプを判別
+  is_overlaps_result <- all(c("plus_overlaps", "minus_overlaps") %in% names(results))
+  
+  if (!is_overlaps_result) {
+    stop("サポートされていない結果形式です。find_overlapsまたはfilter_exact_pamの結果である必要があります")
+  }
+  
+  # プラス鎖とマイナス鎖の結果を取得
+  plus_data <- results$plus_overlaps
+  minus_data <- results$minus_overlaps
+  
+  # 各データフレームにソース情報を追加
+  if (nrow(plus_data) > 0) {
+    plus_data$source <- "plus_strand"
+  }
+  
+  if (nrow(minus_data) > 0) {
+    minus_data$source <- "minus_strand"
+  }
+  
+  # データフレームを結合
+  combined_df <- rbind(plus_data, minus_data)
+  
+  # 結果が空の場合
+  if (nrow(combined_df) == 0) {
+    message("結合されたデータフレームは空です")
+    # 空のデータフレームを返す
+    if (include_metadata) {
+      return(data.frame(
+        spacer = character(0),
+        pam = character(0),
+        result_count = integer(0),
+        stringsAsFactors = FALSE
+      ))
+    } else {
+      return(data.frame())
+    }
+  }
+  
+  # ミスマッチ数でソート（可能な場合）
+  if ("mis" %in% colnames(combined_df)) {
+    combined_df <- combined_df[order(combined_df$mis), ]
+  }
+  
+  # メタデータを追加（必要な場合）
+  if (include_metadata) {
+    # メタデータ列を追加
+    spacer <- if (!is.null(results$spacer)) results$spacer else "unknown"
+    pam <- if (!is.null(results$pam)) results$pam else "unknown"
+    
+    # 行数を取得
+    n <- nrow(combined_df)
+    
+    # メタデータ列を追加
+    combined_df$spacer <- rep(spacer, n)
+    combined_df$pam <- rep(pam, n)
+    combined_df$result_id <- 1:n
+  }
+  
+  # シーケンスの長さを追加（可能な場合）
+  if ("sbjct" %in% colnames(combined_df)) {
+    combined_df$sequence_length <- nchar(combined_df$sbjct)
+  }
+  
+  message(sprintf("結合完了: 合計 %d 件の結果", nrow(combined_df)))
+  
+  return(combined_df)
+}
