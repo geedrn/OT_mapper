@@ -68,7 +68,7 @@ option_list <- list(
   make_option(c("-s", "--spacer"), 
               type = "character", 
               default = NULL,
-              help = "20nt gRNA spacer sequence (without PAM) [required]",
+              help = "20nt gRNA spacer sequence (without PAM) [required if using options]",
               metavar = "SEQUENCE"),
   
   make_option(c("-l", "--seed-length"), 
@@ -164,7 +164,7 @@ validate_inputs <- function(spacer, seed_length, pam) {
   
   # Check spacer
   if (is.null(spacer) || nchar(spacer) == 0) {
-    stop("Spacer sequence is required. Use -s or --spacer option.")
+    stop("Spacer sequence is required. Use -s/--spacer option or provide as first positional argument.")
   }
   
   if (nchar(spacer) != 20) {
@@ -206,14 +206,31 @@ main <- function() {
   log_step("CRISPR Off-target Analysis")
   cat("Version: 1.0\n\n")
   
-  # Validate inputs
-  spacer <- validate_inputs(opt$spacer, opt$`seed-length`, opt$pam)
-  seed_length <- opt$`seed-length`
-  pam <- opt$pam
+  # Handle backward compatibility: if spacer not provided via option, check positional args
+  args <- commandArgs(trailingOnly = TRUE)
+  
+  # If spacer is NULL and we have positional args, use them (backward compatibility)
+  if (is.null(opt$spacer) && length(args) > 0 && !any(grepl("^-", args))) {
+    # Positional arguments detected (legacy mode)
+    spacer <- if (length(args) >= 1) args[1] else NULL
+    seed_length <- if (length(args) >= 2) as.numeric(args[2]) else opt$`seed-length`
+    pam <- if (length(args) >= 3) args[3] else opt$pam
+    output_file <- if (length(args) >= 4) args[4] else opt$output
+  } else {
+    # Use options (new preferred method)
+    spacer <- opt$spacer
+    seed_length <- opt$`seed-length`
+    pam <- opt$pam
+    output_file <- opt$output
+  }
+  
+  # Set other options (not available in legacy mode)
   genome <- opt$genome
   full_mismatch <- opt$`full-mismatch`
   seed_mismatch <- opt$`seed-mismatch`
-  output_file <- opt$output
+  
+  # Validate inputs
+  spacer <- validate_inputs(spacer, seed_length, pam)
   
   # Display configuration
   log_info("Configuration:")
