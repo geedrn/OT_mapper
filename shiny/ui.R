@@ -3,7 +3,7 @@ library(shinydashboard)
 library(DT)
 
 ui <- dashboardPage(
-  dashboardHeader(title = "CRISPR Off-target Detector"),
+  dashboardHeader(title = "OT Mapper"),
   dashboardSidebar(
     sidebarMenu(
       menuItem("Input", tabName = "input", icon = icon("edit")),
@@ -72,7 +72,7 @@ ui <- dashboardPage(
       tabItem(tabName = "about",
         fluidRow(
           box(
-            title = "About CRISPR Off-target Detector", status = "info", solidHeader = TRUE,
+            title = "About OT Mapper", status = "info", solidHeader = TRUE,
             width = 12,
             h3("Software Description"),
             p("This Shiny application provides a web interface for CRISPR-Cas9 off-target detection and annotation."),
