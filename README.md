@@ -245,10 +245,13 @@ OT_mapper/
 │   │   ├── OT_annotator.R  # Gene annotation functions
 │   │   ├── analysis.R      # Complete pipeline (command-line script)
 │   │   ├── primer_generate.R  # Primer-BLAST URL generation
-│   │   ├── gggenome_functions.R  # GGGenome API helpers
-│   │   ├── server.R        # Shiny app server
-│   │   └── ui.R            # Shiny app UI
+│   │   └── gggenome_functions.R  # GGGenome API helpers
 │   └── data/               # Annotation BED files
+│
+├── shiny/                   # Shiny web application
+│   ├── app.R               # Shiny app entry point
+│   ├── server.R             # Shiny app server logic
+│   └── ui.R                 # Shiny app user interface
 │
 └── README.md               # This file
 ```
@@ -527,20 +530,20 @@ Rscript scripts/analysis.R -h
 
 **Method 1: Using app.R (Recommended)**:
 ```bash
-cd R/scripts
+cd shiny
 Rscript -e "shiny::runApp(port=3838)"
 ```
 
 **Method 2: Direct runApp**:
 ```bash
-cd R/scripts
+cd shiny
 Rscript -e "shiny::runApp('.', port=3838)"
 ```
 
 **Method 3: In R/RStudio**:
 ```r
-# Set working directory to R/scripts
-setwd("R/scripts")
+# Set working directory to shiny
+setwd("shiny")
 
 # Load Shiny and run the app
 library(shiny)
@@ -564,7 +567,7 @@ Then open your browser to `http://localhost:3838` (or the URL displayed in the c
 - R packages: `shiny`, `shinydashboard`, `DT`, `httr`, `readr`, `dplyr`, `stringr`, `GenomicRanges`
 - Internet connection (for GGGenome API)
 - bedtools (for overlap detection and annotation)
-- Annotation database files in `scripts/data/` directory
+- Annotation database files in `R/scripts/data/` directory (relative to project root)
 
 **Install Shiny packages** (if not already installed):
 ```r
@@ -660,7 +663,7 @@ Rscript scripts/analysis.R TCGCCCAGCGACCCTGCTCC 12 NGG my_results.tsv
 ### Example 3: R Shiny App
 
 ```bash
-cd R/scripts
+cd shiny
 Rscript -e "shiny::runApp(port=3838)"
 # Then open http://localhost:3838 in your browser
 ```
@@ -688,7 +691,7 @@ annotated <- annotate_with_bedtools(
 
 | Feature | Bash Version | R Version |
 |---------|-------------|-----------|
-| Entry Point | `scripts/OT_detector.sh` | `analysis.R`, Shiny app |
+| Entry Point | `scripts/OT_detector.sh` | `analysis.R` | `shiny/app.R` |
 | Interactive Input | Yes | Yes (R console) + Shiny app |
 | Command Line | Limited | Full support |
 | Overlap Detection | **bedtools intersect** (coordinate-based) | **bedtools intersect** (coordinate-based) |

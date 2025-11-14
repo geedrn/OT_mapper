@@ -35,15 +35,17 @@ if (file.exists(script_dir) && !dir.exists(script_dir)) {
   script_dir <- dirname(script_dir)
 }
 
-# Ensure script_dir points to the scripts directory
+# Ensure script_dir points to the R/scripts directory
 if (!file.exists(file.path(script_dir, "OT_mapper.R"))) {
-  # Try common locations
-  if (file.exists("R/scripts/OT_mapper.R")) {
+  # Try common locations relative to shiny directory
+  if (file.exists("../R/scripts/OT_mapper.R")) {
+    script_dir <- "../R/scripts"
+  } else if (file.exists("R/scripts/OT_mapper.R")) {
     script_dir <- "R/scripts"
   } else if (file.exists("scripts/OT_mapper.R")) {
     script_dir <- "scripts"
   } else {
-    stop("Cannot find OT_mapper.R. Please set working directory to R/scripts or ensure scripts are accessible.")
+    stop("Cannot find OT_mapper.R. Please ensure R/scripts directory is accessible.")
   }
 }
 
@@ -119,6 +121,7 @@ server <- function(input, output, session) {
       # Step 5: Gene annotation (optional, if annotation DBs are available)
       updateProgress("Step 5/6: Annotating with gene information...")
       annotated_df <- NULL
+      # Annotation DBs are in R/scripts/data/
       exon_db <- file.path(script_dir, "data/UCSC_exons_modif_canonical.bed")
       intron_db <- file.path(script_dir, "data/UCSC_introns_modif_canonical.bed")
       
