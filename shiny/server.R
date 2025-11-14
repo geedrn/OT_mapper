@@ -223,35 +223,53 @@ server <- function(input, output, session) {
     )
   })
   
-  # Download handlers
-  output$download_summary <- downloadHandler(
+  # Download handler - All results in ZIP
+  output$download_all <- downloadHandler(
     filename = function() { 
-      paste0("OT_summary_", Sys.Date(), ".csv") 
+      paste0("OT_results_", Sys.Date(), ".zip") 
     },
     content = function(file) {
-      write.csv(results()$summary_table, file, row.names = FALSE)
-    }
-  )
-  
-  output$download_full <- downloadHandler(
-    filename = function() { 
-      paste0("OT_full_", Sys.Date(), ".csv") 
-    },
-    content = function(file) {
-      write.csv(results()$combined_df, file, row.names = FALSE)
-    }
-  )
-  
-  output$download_annotated <- downloadHandler(
-    filename = function() { 
-      paste0("OT_annotated_", Sys.Date(), ".tsv") 
-    },
-    content = function(file) {
+      # Create temporary directory for files
+      temp_dir <- tempdir()
+      temp_files <- c()
+      
+      # Generate filenames
+      date_str <- format(Sys.Date(), "%Y%m%d")
+      summary_file <- file.path(temp_dir, paste0("OT_summary_", date_str, ".csv"))
+      full_file <- file.path(temp_dir, paste0("OT_full_", date_str, ".csv"))
+      annotated_file <- file.path(temp_dir, paste0("OT_annotated_", date_str, ".tsv"))
+      
+      # Write summary CSV
+      write.csv(results()$summary_table, summary_file, row.names = FALSE)
+      temp_files <- c(temp_files, summary_file)
+      
+      # Write full results CSV
+      write.csv(results()$combined_df, full_file, row.names = FALSE)
+      temp_files <- c(temp_files, full_file)
+      
+      # Write annotated TSV (if available)
       if (!is.null(results()$annotated_df) && nrow(results()$annotated_df) > 0) {
-        write.table(results()$annotated_df, file, row.names = FALSE, col.names = FALSE, sep = "\t")
+        write.table(results()$annotated_df, annotated_file, row.names = FALSE, col.names = FALSE, sep = "\t")
+        temp_files <- c(temp_files, annotated_file)
       } else {
-        write.table(data.frame(), file, row.names = FALSE, col.names = FALSE, sep = "\t")
+        # Create empty file if no annotation
+        write.table(data.frame(), annotated_file, row.names = FALSE, col.names = FALSE, sep = "\t")
+        temp_files <- c(temp_files, annotated_file)
       }
+      
+      # Create ZIP file
+      zip_file <- file.path(temp_dir, paste0("OT_results_", date_str, ".zip"))
+      old_wd <- getwd()
+      setwd(temp_dir)
+      tryCatch({
+        utils::zip(zip_file, files = basename(temp_files))
+        file.copy(zip_file, file)
+      }, finally = {
+        setwd(old_wd)
+        # Clean up temporary files
+        unlink(temp_files)
+        unlink(zip_file)
+      })
     }
   )
   

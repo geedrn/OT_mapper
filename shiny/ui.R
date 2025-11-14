@@ -71,9 +71,7 @@ ui <- dashboardPage(
             width = 12,
             DTOutput("results_table"),
             br(),
-            downloadButton("download_summary", "Download Summary (CSV)", class = "btn-primary"),
-            downloadButton("download_full", "Download Full Results (CSV)", class = "btn-primary"),
-            downloadButton("download_annotated", "Download Annotated (TSV)", class = "btn-primary")
+            downloadButton("download_all", "Download All Results (ZIP)", class = "btn-primary btn-lg")
           )
         )
       ),
