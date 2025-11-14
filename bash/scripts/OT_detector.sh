@@ -87,7 +87,14 @@ Options:
   -f, --full-mismatch Mismatch tolerance for full sequence [default: ${DEFAULT_FULL_MISMATCH}]
   -m, --seed-mismatch Mismatch tolerance for seed sequence [default: ${DEFAULT_SEED_MISMATCH}]
   -o, --output-dir    Output directory [default: ${DEFAULT_OUTPUT_DIR}]
+  --skip-annotation   Skip gene annotation step [default: false]
+  --skip-primer       Skip Primer-BLAST link generation [default: false]
   -h, --help          Show this help message
+
+Note: By default, this script runs the complete pipeline:
+  1. Off-target candidate detection
+  2. Gene annotation mapping (automatic)
+  3. Primer-BLAST link generation (automatic)
 
 Examples:
   bash OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 12
