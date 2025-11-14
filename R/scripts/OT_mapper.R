@@ -3,8 +3,9 @@
 #' @param spacer gRNAスペーサー配列（例："TCGCCCAGCGACCCTGCTCC"）
 #' @param seed_length シード配列の長さ
 #' @param pam PAM配列（例："NGG"）
+#' @param verbose 詳細出力を表示するか（デフォルト: TRUE、ShinyアプリではFALSE推奨）
 #' @return 全長データとシード配列データのリスト（+/-鎖）
-gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG") {
+gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TRUE) {
   if (missing(spacer) || !is.character(spacer) || length(spacer) != 1) {
     stop("spacerは1つの文字列である必要があります")
   }
@@ -20,18 +21,23 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG") {
   # スペーサーとPAMを結合
   sequence_with_pam <- paste0(spacer, pam)
   
-  message("GGGenome検索を実行中:")
-  message("スペーサー: ", spacer)
-  message("PAM: ", pam)
-  message("検索配列: ", sequence_with_pam)
-  message("シード長: ", seed_length)
+  # 詳細出力（Shinyアプリでは無効化）
+  if (verbose) {
+    cat("GGGenome検索を実行中:\n")
+    cat("スペーサー: ", spacer, "\n")
+    cat("PAM: ", pam, "\n")
+    cat("検索配列: ", sequence_with_pam, "\n")
+    cat("シード長: ", seed_length, "\n")
+  }
   
   # シード配列を抽出（スペーサーの3'末端側）
   seed <- substr(spacer, nchar(spacer) - seed_length + 1, nchar(spacer))
   seed_with_pam <- paste0(seed, pam)
   
-  message("抽出したシード配列: ", seed)
-  message("PAM付きシード配列: ", seed_with_pam)
+  if (verbose) {
+    cat("抽出したシード配列: ", seed, "\n")
+    cat("PAM付きシード配列: ", seed_with_pam, "\n")
+  }
   
   # 一時ファイルのパスを設定
   temp_dir <- tempdir()
@@ -40,12 +46,14 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG") {
   plus_seed_file <- file.path(temp_dir, "plus_seed.csv")
   minus_seed_file <- file.path(temp_dir, "minus_seed.csv")
   
-  message("ダウンロード先ディレクトリ: ", temp_dir)
-  message("ファイルパス:")
-  message("- 全長 + 鎖: ", plus_full_file)
-  message("- 全長 - 鎖: ", minus_full_file)
-  message("- シード + 鎖: ", plus_seed_file)
-  message("- シード - 鎖: ", minus_seed_file)
+  if (verbose) {
+    cat("ダウンロード先ディレクトリ: ", temp_dir, "\n")
+    cat("ファイルパス:\n")
+    cat("- 全長 + 鎖: ", plus_full_file, "\n")
+    cat("- 全長 - 鎖: ", minus_full_file, "\n")
+    cat("- シード + 鎖: ", plus_seed_file, "\n")
+    cat("- シード - 鎖: ", minus_seed_file, "\n")
+  }
   
   # GGGenome APIのURL（ヒトゲノムhg38、ミスマッチ設定）
   # PAMを含めた検索を行う
@@ -102,7 +110,7 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG") {
   # ダウンロードしたCSVファイルを処理する関数
   process_gggenome_file <- function(file_path) {
     if (!file.exists(file_path) || file.size(file_path) == 0) {
-      message("ファイルが存在しないか空です: ", file_path)
+      if (verbose) cat("ファイルが存在しないか空です: ", file_path, "\n")
       return(data.frame())
     }
     
@@ -113,7 +121,7 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG") {
     data_lines <- lines[!grepl("^#", lines)]
     
     if (length(data_lines) == 0) {
-      message("データ行が見つかりません")
+      if (verbose) cat("データ行が見つかりません\n")
       return(data.frame())
     }
     
@@ -146,7 +154,7 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG") {
       
       df
     }, error = function(e) {
-      message("ファイルの解析に失敗しました: ", e$message)
+      if (verbose) cat("ファイルの解析に失敗しました: ", e$message, "\n")
       return(data.frame())
     })
     
@@ -160,11 +168,13 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG") {
   minus_seed_df <- if (download_success_minus_seed) process_gggenome_file(minus_seed_file) else data.frame()
   
   # 結果件数の表示
-  message("【検索結果】")
-  message("全長配列 + 鎖の結果: ", nrow(plus_full_df), " 件")
-  message("全長配列 - 鎖の結果: ", nrow(minus_full_df), " 件")
-  message("シード配列 + 鎖の結果: ", nrow(plus_seed_df), " 件")
-  message("シード配列 - 鎖の結果: ", nrow(minus_seed_df), " 件")
+  if (verbose) {
+    cat("【検索結果】\n")
+    cat("全長配列 + 鎖の結果: ", nrow(plus_full_df), " 件\n")
+    cat("全長配列 - 鎖の結果: ", nrow(minus_full_df), " 件\n")
+    cat("シード配列 + 鎖の結果: ", nrow(plus_seed_df), " 件\n")
+    cat("シード配列 - 鎖の結果: ", nrow(minus_seed_df), " 件\n")
+  }
   
   # 結果をリストとして返す
   result <- list(
@@ -203,14 +213,14 @@ find_overlaps <- function(list, use_bedtools = TRUE) {
   # bedtoolsのインストール確認
   bedtools_installed <- use_bedtools && (system("which bedtools", ignore.stdout = TRUE) == 0)
   if (use_bedtools && !bedtools_installed) {
-    message("bedtoolsが見つかりません。Rの内部処理でオーバーラップを検出します。")
+    if (verbose) cat("bedtoolsが見つかりません。Rの内部処理でオーバーラップを検出します。\n")
   }
   
   # 処理用の一時ディレクトリ
   temp_dir <- tempdir()
   
   # 1. プラス鎖のオーバーラップ検出
-  message("プラス鎖のオーバーラップを検出中...")
+  if (verbose) cat("プラス鎖のオーバーラップを検出中...\n")
   plus_overlaps <- data.frame()
   
   if (nrow(list$plus_full) > 0 && nrow(list$plus_seed) > 0) {
@@ -306,8 +316,8 @@ find_overlaps <- function(list, use_bedtools = TRUE) {
         }
         
         # 進捗表示
-        if (b %% 10 == 0 || b == batches) {
-          message(sprintf("  プラス鎖 - バッチ処理: %d/%d 完了", b, batches))
+        if (verbose && (b %% 10 == 0 || b == batches)) {
+          cat(sprintf("  プラス鎖 - バッチ処理: %d/%d 完了\n", b, batches))
         }
       }
       
@@ -319,7 +329,7 @@ find_overlaps <- function(list, use_bedtools = TRUE) {
   }
   
   # 2. マイナス鎖のオーバーラップ検出
-  message("マイナス鎖のオーバーラップを検出中...")
+  if (verbose) cat("マイナス鎖のオーバーラップを検出中...\n")
   minus_overlaps <- data.frame()
   
   if (nrow(list$minus_full) > 0 && nrow(list$minus_seed) > 0) {
@@ -415,8 +425,8 @@ find_overlaps <- function(list, use_bedtools = TRUE) {
         }
         
         # 進捗表示
-        if (b %% 10 == 0 || b == batches) {
-          message(sprintf("  マイナス鎖 - バッチ処理: %d/%d 完了", b, batches))
+        if (verbose && (b %% 10 == 0 || b == batches)) {
+          cat(sprintf("  マイナス鎖 - バッチ処理: %d/%d 完了\n", b, batches))
         }
       }
       
@@ -428,8 +438,10 @@ find_overlaps <- function(list, use_bedtools = TRUE) {
   }
   
   # 結果表示
-  message(sprintf("プラス鎖オーバーラップ: %d件（全長配列）", nrow(plus_overlaps)))
-  message(sprintf("マイナス鎖オーバーラップ: %d件（全長配列）", nrow(minus_overlaps)))
+  if (verbose) {
+    cat(sprintf("プラス鎖オーバーラップ: %d件（全長配列）\n", nrow(plus_overlaps)))
+    cat(sprintf("マイナス鎖オーバーラップ: %d件（全長配列）\n", nrow(minus_overlaps)))
+  }
   
   # 結果を返す
   result <- list(
@@ -479,7 +491,7 @@ filter_exact_pam <- function(results, pam = "NGG") {
   # PAM位置のミスマッチをチェックする関数
   check_pam_match <- function(df, strand, pam, spacer_length = NULL) {
     if (nrow(df) == 0 || !("sbjct" %in% colnames(df)) || !("align" %in% colnames(df))) {
-      message(strand, "鎖のデータが空または必要な列がありません")
+      if (verbose) cat(strand, "鎖のデータが空または必要な列がありません\n")
       return(data.frame())
     }
     
@@ -724,7 +736,7 @@ combine_results <- function(results, include_metadata = TRUE) {
   
   # 結果が空の場合
   if (nrow(combined_df) == 0) {
-    message("結合されたデータフレームは空です")
+    if (verbose) cat("結合されたデータフレームは空です\n")
     # 空のデータフレームを返す
     if (include_metadata) {
       return(data.frame(
@@ -763,7 +775,7 @@ combine_results <- function(results, include_metadata = TRUE) {
     combined_df$sequence_length <- nchar(combined_df$sbjct)
   }
   
-  message(sprintf("結合完了: 合計 %d 件の結果", nrow(combined_df)))
+  if (verbose) cat(sprintf("結合完了: 合計 %d 件の結果\n", nrow(combined_df)))
   
   return(combined_df)
 }
