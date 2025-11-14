@@ -64,46 +64,50 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
   plus_seed_url <- paste0("https://gggenome.dbcls.jp/hg38/1/+/nogap/", seed_with_pam, ".csv")
   minus_seed_url <- paste0("https://gggenome.dbcls.jp/hg38/1/-/nogap/", seed_with_pam, ".csv")
   
-  message("GGGenome APIを呼び出し中...")
-  message("【全長配列検索】")
-  message("+ 鎖 URL: ", plus_full_url)
-  message("- 鎖 URL: ", minus_full_url)
+  if (verbose) {
+    cat("GGGenome APIを呼び出し中...\n")
+    cat("【全長配列検索】\n")
+    cat("+ 鎖 URL: ", plus_full_url, "\n")
+    cat("- 鎖 URL: ", minus_full_url, "\n")
+  }
   
   # 全長データのダウンロード
   download_success_plus_full <- tryCatch({
-    utils::download.file(plus_full_url, plus_full_file, quiet = FALSE)
+    utils::download.file(plus_full_url, plus_full_file, quiet = !verbose)
     TRUE
   }, error = function(e) {
-    message("+ 鎖全長データのダウンロードに失敗しました: ", e$message)
+    if (verbose) cat("+ 鎖全長データのダウンロードに失敗しました: ", e$message, "\n")
     FALSE
   })
   
   download_success_minus_full <- tryCatch({
-    utils::download.file(minus_full_url, minus_full_file, quiet = FALSE)
+    utils::download.file(minus_full_url, minus_full_file, quiet = !verbose)
     TRUE
   }, error = function(e) {
-    message("- 鎖全長データのダウンロードに失敗しました: ", e$message)
+    if (verbose) cat("- 鎖全長データのダウンロードに失敗しました: ", e$message, "\n")
     FALSE
   })
   
-  message("【シード配列検索】")
-  message("+ 鎖 URL: ", plus_seed_url)
-  message("- 鎖 URL: ", minus_seed_url)
+  if (verbose) {
+    cat("【シード配列検索】\n")
+    cat("+ 鎖 URL: ", plus_seed_url, "\n")
+    cat("- 鎖 URL: ", minus_seed_url, "\n")
+  }
   
   # シード配列データのダウンロード
   download_success_plus_seed <- tryCatch({
-    utils::download.file(plus_seed_url, plus_seed_file, quiet = FALSE)
+    utils::download.file(plus_seed_url, plus_seed_file, quiet = !verbose)
     TRUE
   }, error = function(e) {
-    message("+ 鎖シードデータのダウンロードに失敗しました: ", e$message)
+    if (verbose) cat("+ 鎖シードデータのダウンロードに失敗しました: ", e$message, "\n")
     FALSE
   })
   
   download_success_minus_seed <- tryCatch({
-    utils::download.file(minus_seed_url, minus_seed_file, quiet = FALSE)
+    utils::download.file(minus_seed_url, minus_seed_file, quiet = !verbose)
     TRUE
   }, error = function(e) {
-    message("- 鎖シードデータのダウンロードに失敗しました: ", e$message)
+    if (verbose) cat("- 鎖シードデータのダウンロードに失敗しました: ", e$message, "\n")
     FALSE
   })
   
@@ -162,10 +166,10 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
   }
   
   # ダウンロードした結果を処理
-  plus_full_df <- if (download_success_plus_full) process_gggenome_file(plus_full_file) else data.frame()
-  minus_full_df <- if (download_success_minus_full) process_gggenome_file(minus_full_file) else data.frame()
-  plus_seed_df <- if (download_success_plus_seed) process_gggenome_file(plus_seed_file) else data.frame()
-  minus_seed_df <- if (download_success_minus_seed) process_gggenome_file(minus_seed_file) else data.frame()
+  plus_full_df <- if (download_success_plus_full) process_gggenome_file(plus_full_file, verbose) else data.frame()
+  minus_full_df <- if (download_success_minus_full) process_gggenome_file(minus_full_file, verbose) else data.frame()
+  plus_seed_df <- if (download_success_plus_seed) process_gggenome_file(plus_seed_file, verbose) else data.frame()
+  minus_seed_df <- if (download_success_minus_seed) process_gggenome_file(minus_seed_file, verbose) else data.frame()
   
   # 結果件数の表示
   if (verbose) {
@@ -202,8 +206,8 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
 #' @param list PAM対応版gggenome_to_dataframe関数の結果リスト
 #' @param use_bedtools bedtoolsを使用するかどうか
 #' @return オーバーラップ結果を含むリスト（全長配列データを出力）
-find_overlaps <- function(list, use_bedtools = TRUE) {
-  message("シード配列と全長配列のオーバーラップを検出中...")
+find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
+  if (verbose) cat("シード配列と全長配列のオーバーラップを検出中...\n")
   
   # 入力チェック
   if (!is.list(list) || !all(c("plus_full", "minus_full", "plus_seed", "minus_seed") %in% names(list))) {
@@ -467,10 +471,13 @@ find_overlaps <- function(list, use_bedtools = TRUE) {
 #'
 #' @param results gggenome_to_dataframe関数またはfind_overlaps関数の結果
 #' @param pam 期待するPAM配列（デフォルト: "NGG"）
+#' @param verbose 詳細出力を表示するか（デフォルト: TRUE）
 #' @return PAMが完全一致する配列のみを含むリスト
-filter_exact_pam <- function(results, pam = "NGG") {
-  message("PAMが完全一致する配列をフィルタリングしています...")
-  message("対象PAM: ", pam)
+filter_exact_pam <- function(results, pam = "NGG", verbose = TRUE) {
+  if (verbose) {
+    cat("PAMが完全一致する配列をフィルタリングしています...\n")
+    cat("対象PAM: ", pam, "\n")
+  }
   
   # 入力チェック
   if (!is.list(results)) {
@@ -489,9 +496,9 @@ filter_exact_pam <- function(results, pam = "NGG") {
   pam_length <- nchar(pam)
   
   # PAM位置のミスマッチをチェックする関数
-  check_pam_match <- function(df, strand, pam, spacer_length = NULL) {
+  check_pam_match <- function(df, strand, pam, spacer_length = NULL, verbose_param = verbose) {
     if (nrow(df) == 0 || !("sbjct" %in% colnames(df)) || !("align" %in% colnames(df))) {
-      if (verbose) cat(strand, "鎖のデータが空または必要な列がありません\n")
+      if (verbose_param) cat(strand, "鎖のデータが空または必要な列がありません\n")
       return(data.frame())
     }
     
@@ -541,7 +548,7 @@ filter_exact_pam <- function(results, pam = "NGG") {
     }
     
     # フィルタリング結果の確認
-    message(strand, "鎖: ", sum(selected), "/", nrow(df), " 件が完全PAM一致")
+    if (verbose_param) cat(strand, "鎖: ", sum(selected), "/", nrow(df), " 件が完全PAM一致\n")
     
     return(df[selected, ])
   }
@@ -549,8 +556,8 @@ filter_exact_pam <- function(results, pam = "NGG") {
   # 結果構造に応じたフィルタリング
   if (is_overlaps_result) {
     # find_overlaps結果の処理
-    plus_filtered <- check_pam_match(results$plus_overlaps, "+", pam)
-    minus_filtered <- check_pam_match(results$minus_overlaps, "-", pam)
+    plus_filtered <- check_pam_match(results$plus_overlaps, "+", pam, verbose_param = verbose)
+    minus_filtered <- check_pam_match(results$minus_overlaps, "-", pam, verbose_param = verbose)
     
     # 元のメタデータを保持しつつ、フィルタリング結果を返す
     filtered_results <- results
@@ -559,10 +566,10 @@ filter_exact_pam <- function(results, pam = "NGG") {
     filtered_results$pam_filtered <- TRUE
   } else {
     # gggenome_to_dataframe結果の処理
-    plus_full_filtered <- check_pam_match(results$plus_full, "+", pam)
-    minus_full_filtered <- check_pam_match(results$minus_full, "-", pam)
-    plus_seed_filtered <- check_pam_match(results$plus_seed, "+", pam)
-    minus_seed_filtered <- check_pam_match(results$minus_seed, "-", pam)
+    plus_full_filtered <- check_pam_match(results$plus_full, "+", pam, verbose_param = verbose)
+    minus_full_filtered <- check_pam_match(results$minus_full, "-", pam, verbose_param = verbose)
+    plus_seed_filtered <- check_pam_match(results$plus_seed, "+", pam, verbose_param = verbose)
+    minus_seed_filtered <- check_pam_match(results$minus_seed, "-", pam, verbose_param = verbose)
     
     # 元のメタデータを保持しつつ、フィルタリング結果を返す
     filtered_results <- results
@@ -574,126 +581,7 @@ filter_exact_pam <- function(results, pam = "NGG") {
   }
   
   # 要約を表示
-  message("PAM完全一致フィルタリング完了")
-  
-  return(filtered_results)
-}
-
-#' PAMが完全一致する配列のみをフィルタリングする関数（修正版）
-#'
-#' @param results gggenome_to_dataframe関数またはfind_overlaps関数の結果
-#' @param pam 期待するPAM配列（デフォルト: "NGG"）
-#' @return PAMが完全一致する配列のみを含むリスト
-filter_exact_pam <- function(results, pam = "NGG") {
-  message("PAMが完全一致する配列をフィルタリングしています...")
-  message("対象PAM: ", pam)
-  
-  # 入力チェック
-  if (!is.list(results)) {
-    stop("resultsはリスト形式である必要があります")
-  }
-  
-  # 入力タイプを判別
-  is_overlaps_result <- all(c("plus_overlaps", "minus_overlaps") %in% names(results))
-  is_gggenome_result <- all(c("plus_full", "minus_full", "plus_seed", "minus_seed") %in% names(results))
-  
-  if (!is_overlaps_result && !is_gggenome_result) {
-    stop("サポートされていない結果形式です")
-  }
-  
-  # PAMの長さを取得
-  pam_length <- nchar(pam)
-  
-  # PAM位置のミスマッチをチェックする関数
-  check_pam_match <- function(df, strand, pam) {
-    if (nrow(df) == 0 || !("sbjct" %in% colnames(df))) {
-      message(strand, "鎖のデータが空または必要な列がありません")
-      return(data.frame())
-    }
-    
-    # PAMの配列を抽出して一致するか確認
-    selected <- logical(nrow(df))
-    
-    for (i in 1:nrow(df)) {
-      sequence <- df$sbjct[i]
-      
-      if (is.na(sequence) || nchar(sequence) < pam_length) {
-        selected[i] <- FALSE
-        next
-      }
-      
-      # PAM部分の塩基配列を抽出
-      if (strand == "+") {
-        # プラス鎖: 配列末尾にPAM
-        pam_part <- substr(sequence, nchar(sequence) - pam_length + 1, nchar(sequence))
-      } else {
-        # マイナス鎖: 配列先頭にPAM（逆相補配列）
-        # PAMの逆相補を作成
-        reverse_complement <- function(seq) {
-          comp <- chartr("ACGT", "TGCA", seq)
-          paste(rev(strsplit(comp, "")[[1]]), collapse = "")
-        }
-        
-        pam_rc <- reverse_complement(pam)
-        pam_part <- substr(sequence, 1, pam_length)
-        
-        # マイナス鎖の場合はPAMの逆相補と比較
-        pam <- pam_rc
-      }
-      
-      # PAM部分が一致するかチェック
-      is_match <- TRUE
-      for (j in 1:pam_length) {
-        pam_char <- substr(pam, j, j)
-        seq_char <- substr(pam_part, j, j)
-        
-        if (pam_char == "N") {
-          # Nの場合は任意の塩基可
-          is_match <- is_match && (seq_char %in% c("A", "C", "G", "T"))
-        } else {
-          # それ以外は完全一致が必要
-          is_match <- is_match && (pam_char == seq_char)
-        }
-      }
-      
-      selected[i] <- is_match
-    }
-    
-    # フィルタリング結果の確認
-    message(strand, "鎖: ", sum(selected), "/", nrow(df), " 件が完全PAM一致")
-    
-    return(df[selected, ])
-  }
-  
-  # 結果構造に応じたフィルタリング
-  if (is_overlaps_result) {
-    # find_overlaps結果の処理
-    plus_filtered <- check_pam_match(results$plus_overlaps, "+", pam)
-    minus_filtered <- check_pam_match(results$minus_overlaps, "-", pam)
-    
-    # 元のメタデータを保持しつつ、フィルタリング結果を返す
-    filtered_results <- results
-    filtered_results$plus_overlaps <- plus_filtered
-    filtered_results$minus_overlaps <- minus_filtered
-    filtered_results$pam_filtered <- TRUE
-  } else {
-    # gggenome_to_dataframe結果の処理
-    plus_full_filtered <- check_pam_match(results$plus_full, "+", pam)
-    minus_full_filtered <- check_pam_match(results$minus_full, "-", pam)
-    plus_seed_filtered <- check_pam_match(results$plus_seed, "+", pam)
-    minus_seed_filtered <- check_pam_match(results$minus_seed, "-", pam)
-    
-    # 元のメタデータを保持しつつ、フィルタリング結果を返す
-    filtered_results <- results
-    filtered_results$plus_full <- plus_full_filtered
-    filtered_results$minus_full <- minus_full_filtered
-    filtered_results$plus_seed <- plus_seed_filtered
-    filtered_results$minus_seed <- minus_seed_filtered
-    filtered_results$pam_filtered <- TRUE
-  }
-  
-  # 要約を表示
-  message("PAM完全一致フィルタリング完了")
+  if (verbose) cat("PAM完全一致フィルタリング完了\n")
   
   return(filtered_results)
 }
@@ -702,9 +590,10 @@ filter_exact_pam <- function(results, pam = "NGG") {
 #'
 #' @param results find_overlaps関数またはfilter_exact_pam関数の結果
 #' @param include_metadata メタデータ列を含めるかどうか
+#' @param verbose 詳細出力を表示するか（デフォルト: TRUE）
 #' @return 結合されたデータフレーム
-combine_results <- function(results, include_metadata = TRUE) {
-  message("解析結果を1つのデータフレームに結合しています...")
+combine_results <- function(results, include_metadata = TRUE, verbose = TRUE) {
+  if (verbose) cat("解析結果を1つのデータフレームに結合しています...\n")
   
   # 入力チェック
   if (!is.list(results)) {
