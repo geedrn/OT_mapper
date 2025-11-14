@@ -648,17 +648,21 @@ annotated <- annotate_with_bedtools(
    - Verify `OT_mapped.tsv` column order (chr, start, end in first 3 columns)
    - Check RefSeq ID conversion table in `primer_generate.R`
 
-## Citation
+## Contributions and Citations
 
-This tool was developed by Ryo and Gabriel for CRISPR off-target analysis.
+### Development
 
-## License
+This tool was developed by **Ryo** and **Gabriel** for CRISPR off-target analysis.
 
-[Specify your license here]
+### Off-Target Definition
 
-## Acknowledgments
+The off-target detection methodology and definitions used in this software were established by:
+- **Dr. Knut Woltjen**
+- **Dr. Ryo Niwa**
 
-- GGGenome (https://gggenome.dbcls.jp/) for off-target search API
-- GENCODE for gene annotations
-- UCSC for genome browser and annotation resources
+### Acknowledgments
+
+- **GGGenome** (https://gggenome.dbcls.jp/) for off-target search API
+- **GENCODE** for gene annotations
+- **UCSC** for genome browser and annotation resources
 
