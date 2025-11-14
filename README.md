@@ -689,15 +689,16 @@ annotated <- annotate_with_bedtools(
 
 ## Version Comparison
 
-| Feature | Bash Version | R Version |
-|---------|-------------|-----------|
-| Entry Point | `scripts/OT_detector.sh` | `analysis.R` | `shiny/app.R` |
-| Interactive Input | Yes | Yes (R console) + Shiny app |
-| Command Line | Limited | Full support |
-| Overlap Detection | **bedtools intersect** (coordinate-based) | **bedtools intersect** (coordinate-based) |
-| PAM Flexibility | NGG only | Configurable |
-| Web Interface | No | Yes (Shiny) |
-| Progress Tracking | Basic | Advanced (Shiny) |
+| Feature | Bash Version | R Version | Shiny App |
+|---------|-------------|-----------|-----------|
+| Entry Point | `scripts/OT_detector.sh` | `scripts/analysis.R` | `shiny/app.R` |
+| Interactive Input | Yes | Yes (R console) | Yes (Web UI) |
+| Command Line | Full support | Full support | No (Web only) |
+| Overlap Detection | **bedtools intersect** (coordinate-based) | **bedtools intersect** (coordinate-based) | **bedtools intersect** (coordinate-based) |
+| PAM Flexibility | NGG only | Configurable | Configurable |
+| Web Interface | No | No | Yes |
+| Progress Tracking | Basic | Basic | Advanced (real-time) |
+| Output Formats | BED, CSV, TSV | TSV, CSV | CSV, TSV (downloadable) |
 | Error Handling | Basic | Advanced |
 
 **Note**: Both versions now use the same coordinate-based overlap detection algorithm using `bedtools intersect`, ensuring consistent results between implementations.
