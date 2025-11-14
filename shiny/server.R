@@ -126,12 +126,27 @@ server <- function(input, output, session) {
       intron_db <- file.path(script_dir, "data/UCSC_introns_modif_canonical.bed")
       
       if (file.exists(exon_db) && file.exists(intron_db)) {
-        annotated_df <- tryCatch({
-          annotate_with_bedtools(combined_df, exon_db, intron_db, output_file = NULL)
-        }, error = function(e) {
-          warning(paste("Annotation failed:", e$message))
-          NULL
-        })
+        # Check if bedtools is available
+        bedtools_available <- system("which bedtools", ignore.stdout = TRUE, ignore.stderr = TRUE) == 0
+        
+        if (!bedtools_available) {
+          showNotification("bedtools not found. Skipping gene annotation. Install bedtools to enable annotation.", 
+                          type = "warning", duration = 5)
+          print("Warning: bedtools not found. Gene annotation skipped.")
+        } else {
+          annotated_df <- tryCatch({
+            annotate_with_bedtools(combined_df, exon_db, intron_db, output_file = NULL)
+          }, error = function(e) {
+            showNotification(paste("Annotation failed:", e$message), 
+                            type = "warning", duration = 5)
+            print(paste("Annotation error:", e$message))
+            NULL
+          })
+        }
+      } else {
+        showNotification("Annotation database files not found. Skipping gene annotation.", 
+                        type = "warning", duration = 5)
+        print("Warning: Annotation database files not found.")
       }
       
       # Step 6: Prepare summary table
