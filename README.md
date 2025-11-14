@@ -232,20 +232,18 @@ Output: Annotated off-target candidates with primer links
 ```
 OT_mapper/
 ├── bash/                    # Bash implementation
-│   ├── main.sh             # Main entry point (orchestrates pipeline)
 │   ├── scripts/
 │   │   ├── utils.sh        # Shared utilities (logging, validation, helpers)
-│   │   ├── OT_detector.sh  # OT candidate detection (modular, refactored)
-│   │   ├── OT_mapper.sh    # Gene annotation mapping (modular, refactored)
+│   │   ├── OT_detector.sh  # Complete pipeline (detection + annotation + primer)
+│   │   ├── OT_mapper.sh    # Gene annotation mapping (can be run standalone)
 │   │   └── primer_generate.R  # Primer-BLAST URL generation
 │   └── data/               # Annotation BED files
 │
 ├── R/                      # R implementation
-│   ├── main.command        # Main entry point (same as bash)
 │   ├── scripts/
 │   │   ├── OT_mapper.R     # Core OT detection functions
 │   │   ├── OT_annotator.R  # Gene annotation functions
-│   │   ├── analysis.R      # Command-line analysis script (refactored)
+│   │   ├── analysis.R      # Complete pipeline (command-line script)
 │   │   ├── primer_generate.R  # Primer-BLAST URL generation
 │   │   ├── gggenome_functions.R  # GGGenome API helpers
 │   │   ├── server.R        # Shiny app server
@@ -259,13 +257,12 @@ OT_mapper/
 
 **Bash Scripts:**
 - **`utils.sh`**: Shared utility functions for logging, validation, file operations, and common tasks
-- **`OT_detector.sh`**: Modular script with clear function separation:
-  - Input validation and parsing
-  - Sequence preparation
-  - Strand processing (reusable for plus/minus)
-  - Output file generation
-- **`OT_mapper.sh`**: Focused script for annotation mapping with clear error handling
-- **`main.sh`**: Pipeline orchestrator that calls individual scripts in sequence
+- **`OT_detector.sh`**: Complete pipeline script that runs:
+  - Off-target candidate detection
+  - Gene annotation mapping (automatic, can be skipped with `--skip-annotation`)
+  - Primer-BLAST link generation (automatic, can be skipped with `--skip-primer`)
+  - Modular design with clear function separation
+- **`OT_mapper.sh`**: Standalone script for annotation mapping (can be run independently)
 
 **R Scripts:**
 - **`analysis.R`**: Main command-line script with comprehensive error handling
@@ -346,12 +343,19 @@ brew install bedtools
 
 ```bash
 cd bash
-bash main.sh
+bash scripts/OT_detector.sh
 ```
 
 The script will prompt you interactively:
 - **Spacer sequence**: 20nt gRNA sequence (without PAM), e.g., `GCTGAAGCACTGCACGCCGT`
 - **Seed length**: Choose `8` to `12` nucleotides (inclusive)
+
+**Note**: By default, the script runs the complete pipeline:
+1. Off-target candidate detection
+2. Gene annotation mapping (automatic)
+3. Primer-BLAST link generation (automatic)
+
+Use `--skip-annotation` or `--skip-primer` to skip specific steps if needed.
 
 #### Command-Line Mode
 
@@ -381,6 +385,8 @@ bash scripts/OT_detector.sh -h
 - `-f, --full-mismatch`: Mismatch tolerance for full sequence [default: 3]
 - `-m, --seed-mismatch`: Mismatch tolerance for seed sequence [default: 1]
 - `-o, --output-dir`: Output directory [default: analysis]
+- `--skip-annotation`: Skip gene annotation step [default: false]
+- `--skip-primer`: Skip Primer-BLAST link generation [default: false]
 - `-h, --help`: Show help message
 
 #### Output Files
@@ -391,16 +397,28 @@ bash scripts/OT_detector.sh -h
 - `{output_dir}/OT_mapper_results/OT_mapped.tsv`: Annotated TSV with exon/intron information
 - `{output_dir}/OT_mapper_results/OT_with_primer.tsv`: Final TSV with Primer-BLAST URLs
 
-#### Manual Step-by-Step Execution
+#### Complete Pipeline (Recommended)
 
 ```bash
-# Step 1: Detect OT candidates (interactive)
-bash scripts/OT_detector.sh
-
-# Step 1: Detect OT candidates (command-line)
+# Run complete pipeline (detection + annotation + primer generation)
 bash scripts/OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 12
 
-# Step 2: Map to gene annotations
+# Skip primer generation if not needed
+bash scripts/OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 12 --skip-primer
+
+# Skip both annotation and primer generation (detection only)
+bash scripts/OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 12 --skip-annotation
+```
+
+#### Manual Step-by-Step Execution (Advanced)
+
+If you need to run steps separately or with custom options:
+
+```bash
+# Step 1: Detect OT candidates only
+bash scripts/OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 12 --skip-annotation
+
+# Step 2: Map to gene annotations (standalone)
 bash scripts/OT_mapper.sh analysis/OT/OT_candidate.bed
 
 # Step 2: Map with custom annotation files
@@ -409,7 +427,7 @@ bash scripts/OT_mapper.sh analysis/OT/OT_candidate.bed \
   -i custom_introns.bed \
   -o custom_output
 
-# Step 3: Generate Primer-BLAST links
+# Step 3: Generate Primer-BLAST links (standalone)
 Rscript scripts/primer_generate.R \
   -i analysis/OT_mapper_results/OT_mapped.tsv \
   -o analysis/OT_mapper_results/OT_with_primer.tsv
@@ -571,10 +589,11 @@ These files are stored in `bash/data/` and `R/scripts/data/` directories.
 
 ```bash
 cd bash
-bash main.sh
+bash scripts/OT_detector.sh
 # Input when prompted:
 # Spacer: GCTGAAGCACTGCACGCCGT
 # Seed: 12
+# The script will automatically run detection, annotation, and primer generation
 ```
 
 ### Example 1b: Bash Version (Command-Line)
@@ -616,7 +635,7 @@ annotated <- annotate_with_bedtools(
 
 | Feature | Bash Version | R Version |
 |---------|-------------|-----------|
-| Entry Point | `main.sh` | `main.command`, `analysis.R`, Shiny app |
+| Entry Point | `scripts/OT_detector.sh` | `analysis.R`, Shiny app |
 | Interactive Input | Yes | Yes (R console) + Shiny app |
 | Command Line | Limited | Full support |
 | Overlap Detection | **bedtools intersect** (coordinate-based) | **bedtools intersect** (coordinate-based) |

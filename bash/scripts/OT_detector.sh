@@ -21,7 +21,14 @@
 #   -f, --full-mismatch Mismatch tolerance for full sequence [default: 3]
 #   -m, --seed-mismatch Mismatch tolerance for seed sequence [default: 1]
 #   -o, --output-dir  Output directory [default: analysis]
+#   --skip-annotation Skip gene annotation step [default: false]
+#   --skip-primer     Skip Primer-BLAST link generation [default: false]
 #   -h, --help        Show this help message
+#
+# Note: By default, this script runs the complete pipeline:
+#   1. Off-target candidate detection
+#   2. Gene annotation mapping (automatic)
+#   3. Primer-BLAST link generation (automatic)
 # =============================================================================
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
@@ -56,6 +63,8 @@ FULL_MISMATCH=${DEFAULT_FULL_MISMATCH}
 SEED_MISMATCH=${DEFAULT_SEED_MISMATCH}
 OUTPUT_DIR=${DEFAULT_OUTPUT_DIR}
 INTERACTIVE=false
+SKIP_ANNOTATION=false
+SKIP_PRIMER=false
 
 # =============================================================================
 # Helper Functions
@@ -83,6 +92,7 @@ Options:
 Examples:
   bash OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 12
   bash OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 8 -p NGG -g hg38
+  bash OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 12 --skip-primer  # Skip primer generation
 EOF
 }
 
@@ -117,6 +127,14 @@ parse_arguments() {
             -o|--output-dir)
                 OUTPUT_DIR="$2"
                 shift 2
+                ;;
+            --skip-annotation)
+                SKIP_ANNOTATION=true
+                shift
+                ;;
+            --skip-primer)
+                SKIP_PRIMER=true
+                shift
                 ;;
             -h|--help)
                 show_usage
@@ -475,13 +493,85 @@ main() {
     # Create output files
     create_output_files "$TEMP_DIR" "$OUTPUT_DIR"
     
-    # Summary
-    log_step "Analysis Complete"
+    # Step 2: Gene annotation (if not skipped)
+    if [ "$SKIP_ANNOTATION" = false ]; then
+        log_step "Step 4: Gene Annotation"
+        
+        # Get script directory
+        local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        local mapper_script="${script_dir}/OT_mapper.sh"
+        local candidate_bed="${OUTPUT_DIR}/OT/OT_candidate.bed"
+        
+        if [ ! -f "$mapper_script" ]; then
+            log_warning "OT_mapper.sh not found. Skipping annotation step."
+            log_info "You can run annotation manually: bash $mapper_script $candidate_bed"
+        elif [ ! -f "$candidate_bed" ] || [ ! -s "$candidate_bed" ]; then
+            log_warning "OT candidate BED file is empty or missing. Skipping annotation step."
+        else
+            log_info "Running gene annotation mapping..."
+            if bash "$mapper_script" "$candidate_bed" -o "${OUTPUT_DIR}/OT_mapper_results"; then
+                log_success "Gene annotation completed"
+                
+                # Step 3: Primer-BLAST link generation (if not skipped)
+                if [ "$SKIP_PRIMER" = false ]; then
+                    log_step "Step 5: Primer-BLAST Link Generation"
+                    
+                    local mapped_tsv="${OUTPUT_DIR}/OT_mapper_results/OT_mapped.tsv"
+                    local primer_tsv="${OUTPUT_DIR}/OT_mapper_results/OT_with_primer.tsv"
+                    local primer_script="${script_dir}/primer_generate.R"
+                    
+                    if [ ! -f "$primer_script" ]; then
+                        log_warning "primer_generate.R not found. Skipping primer generation."
+                    elif [ ! -f "$mapped_tsv" ] || [ ! -s "$mapped_tsv" ]; then
+                        log_warning "Annotated TSV file is empty or missing. Skipping primer generation."
+                    else
+                        # Check if R is available
+                        if ! check_command Rscript; then
+                            log_warning "Rscript not found. Skipping primer generation."
+                            log_info "Install R to generate Primer-BLAST links"
+                        else
+                            log_info "Generating Primer-BLAST URLs..."
+                            if Rscript "$primer_script" -i "$mapped_tsv" -o "$primer_tsv" 2>/dev/null; then
+                                local primer_count=$(count_lines "$primer_tsv")
+                                if [ "$primer_count" -gt 0 ]; then
+                                    log_success "Primer-BLAST links generated for $primer_count candidate(s)"
+                                else
+                                    log_warning "Primer-BLAST output file is empty"
+                                fi
+                            else
+                                log_warning "Primer generation failed. Check R and optparse package installation."
+                            fi
+                        fi
+                    fi
+                else
+                    log_info "Skipping Primer-BLAST link generation (--skip-primer specified)"
+                fi
+            else
+                log_warning "Gene annotation failed. Check error messages above."
+            fi
+        fi
+    else
+        log_info "Skipping gene annotation step (--skip-annotation specified)"
+    fi
+    
+    # Final summary
+    log_step "Pipeline Complete"
     echo ""
     log_success "Results saved to:"
     echo "  ${OUTPUT_DIR}/OT/OT_candidate.bed ($TOTAL_COUNT candidates)"
     echo "  ${OUTPUT_DIR}/OT/OT_list_final.csv"
     echo "  ${OUTPUT_DIR}/OT/UCSC_list_final.csv"
+    
+    if [ "$SKIP_ANNOTATION" = false ] && [ -f "${OUTPUT_DIR}/OT_mapper_results/OT_mapped.tsv" ]; then
+        local annotated_count=$(count_lines "${OUTPUT_DIR}/OT_mapper_results/OT_mapped.tsv")
+        echo "  ${OUTPUT_DIR}/OT_mapper_results/OT_mapped.tsv ($annotated_count annotated)"
+    fi
+    
+    if [ "$SKIP_PRIMER" = false ] && [ "$SKIP_ANNOTATION" = false ] && [ -f "${OUTPUT_DIR}/OT_mapper_results/OT_with_primer.tsv" ]; then
+        local primer_count=$(count_lines "${OUTPUT_DIR}/OT_mapper_results/OT_with_primer.tsv")
+        echo "  ${OUTPUT_DIR}/OT_mapper_results/OT_with_primer.tsv ($primer_count with primer links)"
+    fi
+    
     echo ""
     log_success "Done!"
 }
