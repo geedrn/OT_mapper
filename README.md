@@ -608,10 +608,27 @@ These files are stored in:
 ### Output Files
 
 1. **OT_candidate.bed**: BED format with chromosome, start, end coordinates
-2. **OT_mapped.tsv**: Tab-separated file with:
-   - Chromosome, start, end coordinates
-   - Gene annotation (exon/intron)
-   - Additional metadata from bedtools intersect
+2. **OT_mapped.tsv**: Tab-separated file with annotation results from `bedtools intersect -wa -wb`
+   
+   **Column Structure** (12 columns total):
+   - **V1-V6**: Input BED file columns (off-target candidate coordinates)
+     - V1: `chrom` (chromosome)
+     - V2: `start` (start position)
+     - V3: `end` (end position)
+     - V4: `name` (candidate identifier, e.g., "OT_1")
+     - V5: `score` (usually 0)
+     - V6: `strand` (+ or -)
+   
+   - **V7-V12**: Annotation BED file columns (gene annotation information)
+     - V7: `annot_chrom` (chromosome from annotation)
+     - V8: `annot_start` (start position from annotation)
+     - V9: `annot_end` (end position from annotation)
+     - V10: `geneSymbol` (gene symbol/identifier, e.g., "ENSG000002")
+     - V11: `feature_type` (either "intron" or "exon")
+     - V12: `intron_exon_number` (intron/exon number, 0-based index. Example: 5 = 5th intron)
+   
+   **Note**: The V12 column (`intron_exon_number`) indicates which intron or exon the off-target candidate overlaps with. For example, if V11 is "intron" and V12 is "5", it means the candidate overlaps with the 5th intron of the gene specified in V10.
+
 3. **OT_with_primer.tsv**: Same as OT_mapped.tsv with Primer-BLAST URLs added
 
 ## Important Notes

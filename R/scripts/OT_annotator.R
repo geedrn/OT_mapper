@@ -7,6 +7,13 @@
 #' @param intron_db イントロンアノテーションBEDファイル
 #' @param output_file 出力ファイルパス（デフォルトはNULL=出力なし）
 #' @return アノテーション結果のデータフレーム
+#' 
+#' @details 出力データフレームの列構造:
+#'   - V1-V6: 入力BEDファイルの列 (chrom, start, end, name, score, strand)
+#'   - V7-V9: アノテーションBEDファイルの座標 (chrom, start, end)
+#'   - V10: 遺伝子シンボル (geneSymbol)
+#'   - V11: 特徴タイプ ("intron" または "exon")
+#'   - V12: イントロン/エクソン番号 (0から始まる番号。例: 5 = 5番目のイントロン)
 #'
 annotate_with_bedtools <- function(combined_df, exon_db, intron_db, output_file = NULL) {
   # bedtoolsのインストール確認

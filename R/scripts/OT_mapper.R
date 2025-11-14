@@ -128,9 +128,15 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", full_mismatc
   })
   
   # ダウンロードしたCSVファイルを処理する関数
-  process_gggenome_file <- function(file_path, verbose_param = verbose) {
+  process_gggenome_file <- function(file_path, file_type = "", verbose_param = verbose) {
     if (!file.exists(file_path) || file.size(file_path) == 0) {
-      if (verbose_param) cat("ファイルが存在しないか空です: ", file_path, "\n")
+      if (verbose_param) {
+        if (file_type != "") {
+          cat("ファイルが存在しないか空です (", file_type, "): ", basename(file_path), "\n")
+        } else {
+          cat("ファイルが存在しないか空です: ", file_path, "\n")
+        }
+      }
       return(data.frame())
     }
     
@@ -141,7 +147,13 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", full_mismatc
     data_lines <- lines[!grepl("^#", lines)]
     
     if (length(data_lines) == 0) {
-      if (verbose_param) cat("データ行が見つかりません\n")
+      if (verbose_param) {
+        if (file_type != "") {
+          cat("データ行が見つかりません (", file_type, "): ", basename(file_path), "\n")
+        } else {
+          cat("データ行が見つかりません: ", basename(file_path), "\n")
+        }
+      }
       return(data.frame())
     }
     
@@ -174,7 +186,13 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", full_mismatc
       
       df
     }, error = function(e) {
-      if (verbose_param) cat("ファイルの解析に失敗しました: ", e$message, "\n")
+      if (verbose_param) {
+        if (file_type != "") {
+          cat("ファイルの解析に失敗しました (", file_type, "): ", e$message, "\n")
+        } else {
+          cat("ファイルの解析に失敗しました: ", e$message, "\n")
+        }
+      }
       return(data.frame())
     })
     
@@ -182,10 +200,10 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", full_mismatc
   }
   
   # ダウンロードした結果を処理
-  plus_full_df <- if (download_success_plus_full) process_gggenome_file(plus_full_file, verbose) else data.frame()
-  minus_full_df <- if (download_success_minus_full) process_gggenome_file(minus_full_file, verbose) else data.frame()
-  plus_seed_df <- if (download_success_plus_seed) process_gggenome_file(plus_seed_file, verbose) else data.frame()
-  minus_seed_df <- if (download_success_minus_seed) process_gggenome_file(minus_seed_file, verbose) else data.frame()
+  plus_full_df <- if (download_success_plus_full) process_gggenome_file(plus_full_file, "全長 + 鎖", verbose) else data.frame()
+  minus_full_df <- if (download_success_minus_full) process_gggenome_file(minus_full_file, "全長 - 鎖", verbose) else data.frame()
+  plus_seed_df <- if (download_success_plus_seed) process_gggenome_file(plus_seed_file, "シード + 鎖", verbose) else data.frame()
+  minus_seed_df <- if (download_success_minus_seed) process_gggenome_file(minus_seed_file, "シード - 鎖", verbose) else data.frame()
   
   # 結果件数の表示
   if (verbose) {

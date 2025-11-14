@@ -172,10 +172,10 @@ server <- function(input, output, session) {
         print("Warning: Annotation database files not found.")
       }
       
-      # Step 6: Prepare summary table
+      # Step 6: Prepare summary table and generate Primer-BLAST links
       updateProgress("Step 6/6: Preparing results...")
       
-      # Create summary table
+      # Create summary table first
       summary_table <- combined_df %>%
         mutate(
           Chromosome = chrom,
@@ -188,11 +188,88 @@ server <- function(input, output, session) {
         select(Chromosome, Start, End, Strand, Sequence, Mismatches) %>%
         arrange(if("Mismatches" %in% colnames(.)) Mismatches else Chromosome, Chromosome, Start)
       
+      # Generate Primer-BLAST links if annotated data is available
+      primer_blast_df <- NULL
+      if (!is.null(annotated_df) && nrow(annotated_df) > 0) {
+        tryCatch({
+          # annotated_df format from bedtools intersect -wa -wb:
+          # V1-V6: input BED (chrom, start, end, name, score, strand)
+          # V7-V12: annotation BED (chrom, start, end, geneSymbol, feature_type, feature_number)
+          # We need to use input BED coordinates (V1, V2, V3) for Primer-BLAST
+          
+          # Extract unique coordinates from annotated_df (input BED columns)
+          unique_coords <- annotated_df[, 1:3]
+          colnames(unique_coords) <- c("chrom", "start", "end")
+          unique_coords <- unique_coords[!duplicated(unique_coords), ]
+          
+          temp_id <- paste0(format(Sys.time(), "%Y%m%d_%H%M%S"), "_", sample(1000:9999, 1))
+          temp_primer_input <- file.path(tempdir(), paste0("primer_input_", temp_id, ".tsv"))
+          temp_primer_output <- file.path(tempdir(), paste0("primer_output_", temp_id, ".tsv"))
+          
+          # Write unique coordinates to temporary file
+          write.table(unique_coords, temp_primer_input, 
+                     row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
+          
+          # Generate Primer-BLAST links
+          generate_primer_blast_links(temp_primer_input, temp_primer_output)
+          
+          # Read back the results with Primer-BLAST URLs
+          if (file.exists(temp_primer_output) && file.size(temp_primer_output) > 0) {
+            primer_blast_df <- read.table(temp_primer_output, header = FALSE, sep = "\t", 
+                                          stringsAsFactors = FALSE, quote = "")
+            
+            # Check column count - generate_primer_blast_links outputs:
+            # Input: 3 columns (chrom, start, end)
+            # The function adds V6 column with URL, so output has 6 columns total
+            # But when reading, if V4 and V5 are empty, they may be missing
+            print(paste("Primer-BLAST output columns:", ncol(primer_blast_df)))
+            print(paste("Primer-BLAST output rows:", nrow(primer_blast_df)))
+            
+            # Handle different column counts
+            if (ncol(primer_blast_df) == 4) {
+              # 4 columns: V1=RefSeq_ID, V2=Start, V3=End, V4=Primer_BLAST_URL (V6 was written as V4)
+              colnames(primer_blast_df) <- c("RefSeq_ID", "Start", "End", "Primer_BLAST_URL")
+            } else if (ncol(primer_blast_df) == 6) {
+              # 6 columns: V1=RefSeq_ID, V2=Start, V3=End, V4=NA, V5=NA, V6=Primer_BLAST_URL
+              colnames(primer_blast_df) <- c("RefSeq_ID", "Start", "End", "V4", "V5", "Primer_BLAST_URL")
+              primer_blast_df <- primer_blast_df[, c("RefSeq_ID", "Start", "End", "Primer_BLAST_URL")]
+            } else {
+              # Try to extract URL from the last column
+              print(paste("Unexpected column count:", ncol(primer_blast_df), "- trying to extract URL from last column"))
+              colnames(primer_blast_df)[1:3] <- c("RefSeq_ID", "Start", "End")
+              primer_blast_df$Primer_BLAST_URL <- primer_blast_df[, ncol(primer_blast_df)]
+              primer_blast_df <- primer_blast_df[, c("RefSeq_ID", "Start", "End", "Primer_BLAST_URL")]
+            }
+            
+            if (ncol(primer_blast_df) == 4 && "Primer_BLAST_URL" %in% colnames(primer_blast_df)) {
+              # Store Primer-BLAST URLs in primer_blast_df for later use in download files
+              # Don't add to summary_table (not displayed in table)
+              matched_count <- nrow(primer_blast_df)
+              print(paste("Primer-BLAST links generated:", matched_count, "links"))
+            } else {
+              print(paste("Error: Primer-BLAST output has unexpected column count:", ncol(primer_blast_df)))
+            }
+            
+            # Clean up temporary files
+            unlink(c(temp_primer_input, temp_primer_output))
+          } else {
+            print("Primer-BLAST output file is empty or does not exist")
+          }
+        }, error = function(e) {
+          print(paste("Primer-BLAST link generation failed:", e$message))
+          print(paste("Error details:", toString(e)))
+          # Continue without Primer-BLAST links
+        })
+      } else {
+        print("No annotated data available for Primer-BLAST link generation")
+      }
+      
       # Store results
       results(list(
         summary_table = summary_table,
         combined_df = combined_df,
         annotated_df = annotated_df,
+        primer_blast_df = primer_blast_df,
         spacer = spacer,
         seed_length = input$seed_length,
         pam = input$pam
@@ -212,8 +289,15 @@ server <- function(input, output, session) {
   # Render results table
   output$results_table <- renderDT({
     req(results())
+    df <- results()$summary_table
+    
+    # Remove Primer_BLAST_URL column if it exists (not displayed in table, only in download files)
+    if ("Primer_BLAST_URL" %in% colnames(df)) {
+      df <- df %>% select(-Primer_BLAST_URL)
+    }
+    
     datatable(
-      results()$summary_table,
+      df,
       options = list(
         pageLength = 25,
         scrollX = TRUE,
@@ -239,17 +323,35 @@ server <- function(input, output, session) {
       full_file <- file.path(temp_dir, paste0("OT_full_", date_str, ".csv"))
       annotated_file <- file.path(temp_dir, paste0("OT_annotated_", date_str, ".tsv"))
       
-      # Write summary CSV
+      # Write summary CSV (without Primer-BLAST URLs)
       write.csv(results()$summary_table, summary_file, row.names = FALSE)
       temp_files <- c(temp_files, summary_file)
       
-      # Write full results CSV
+      # Write full results CSV (without Primer-BLAST URLs)
       write.csv(results()$combined_df, full_file, row.names = FALSE)
       temp_files <- c(temp_files, full_file)
       
-      # Write annotated TSV (if available)
+      # Write annotated TSV with Primer-BLAST links (if available)
       if (!is.null(results()$annotated_df) && nrow(results()$annotated_df) > 0) {
-        write.table(results()$annotated_df, annotated_file, row.names = FALSE, col.names = FALSE, sep = "\t")
+        # If primer_blast_df exists, merge with annotated_df
+        if (!is.null(results()$primer_blast_df) && nrow(results()$primer_blast_df) > 0) {
+          # Merge annotated_df with primer_blast_df by coordinates
+          # annotated_df format: V1=chrom, V2=start, V3=end, ...
+          annotated_with_primer <- results()$annotated_df
+          annotated_with_primer$Primer_BLAST_URL <- NA
+          for (i in 1:nrow(annotated_with_primer)) {
+            matching_idx <- which(
+              results()$primer_blast_df$Start == annotated_with_primer[i, 2] &
+              results()$primer_blast_df$End == annotated_with_primer[i, 3]
+            )
+            if (length(matching_idx) > 0) {
+              annotated_with_primer$Primer_BLAST_URL[i] <- results()$primer_blast_df$Primer_BLAST_URL[matching_idx[1]]
+            }
+          }
+          write.table(annotated_with_primer, annotated_file, row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
+        } else {
+          write.table(results()$annotated_df, annotated_file, row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
+        }
         temp_files <- c(temp_files, annotated_file)
       } else {
         # Create empty file if no annotation
