@@ -127,12 +127,14 @@ option_list <- list(
 
 opt_parser <- OptionParser(
   option_list = option_list,
-  usage = "usage: %prog [options]",
+  usage = "usage: %prog [options] OR %prog <spacer> [seed_length] [pam] [output_file]",
   description = "CRISPR Off-target Analysis - Complete pipeline for detecting and annotating off-target candidates",
-  epilogue = "Examples:\n  Rscript analysis.R -s GCTGAAGCACTGCACGCCGT -l 12\n  Rscript analysis.R -s GCTGAAGCACTGCACGCCGT -l 8 -p NGG -g hg38 -o results.tsv"
+  epilogue = "Examples:\n  Rscript analysis.R -s GCTGAAGCACTGCACGCCGT -l 12\n  Rscript analysis.R -s GCTGAAGCACTGCACGCCGT -l 8 -p NGG -g hg38 -o results.tsv\n  Rscript analysis.R GCTGAAGCACTGCACGCCGT 12 NGG results.tsv  # Legacy positional args"
 )
 
-opt <- parse_args(opt_parser)
+opt <- parse_args(opt_parser, positional_arguments = TRUE)
+positional_args <- opt$args
+opt <- opt$options
 
 # Show help and exit
 if (opt$help) {
@@ -207,15 +209,13 @@ main <- function() {
   cat("Version: 1.0\n\n")
   
   # Handle backward compatibility: if spacer not provided via option, check positional args
-  args <- commandArgs(trailingOnly = TRUE)
-  
-  # If spacer is NULL and we have positional args, use them (backward compatibility)
-  if (is.null(opt$spacer) && length(args) > 0 && !any(grepl("^-", args))) {
+  if (is.null(opt$spacer) && length(positional_args) > 0) {
     # Positional arguments detected (legacy mode)
-    spacer <- if (length(args) >= 1) args[1] else NULL
-    seed_length <- if (length(args) >= 2) as.numeric(args[2]) else opt$`seed-length`
-    pam <- if (length(args) >= 3) args[3] else opt$pam
-    output_file <- if (length(args) >= 4) args[4] else opt$output
+    spacer <- positional_args[1]
+    seed_length <- if (length(positional_args) >= 2) as.numeric(positional_args[2]) else opt$`seed-length`
+    pam <- if (length(positional_args) >= 3) positional_args[3] else opt$pam
+    output_file <- if (length(positional_args) >= 4) positional_args[4] else opt$output
+    log_info("Using legacy positional arguments (consider using -s, -l, -p, -o options)")
   } else {
     # Use options (new preferred method)
     spacer <- opt$spacer
