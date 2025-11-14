@@ -56,10 +56,20 @@ source(file.path(script_dir, "primer_generate.R"), local = TRUE)
 
 server <- function(input, output, session) {
   results <- reactiveVal(NULL)
+  analysis_completed <- reactiveVal(FALSE)
+  
+  # Observe when results are updated and switch to Results tab
+  observe({
+    if (!is.null(results()) && analysis_completed()) {
+      updateTabItems(session, "sidebar", "results")
+      analysis_completed(FALSE)  # Reset flag
+    }
+  })
   
   observeEvent(input$run, {
+    analysis_completed(FALSE)  # Reset flag at start
     tryCatch({
-      req(input$spacer, input$seed_length, input$pam)
+      req(input$spacer, input$seed_length, input$pam, input$full_mismatch, input$seed_mismatch)
       
       # Clean and validate spacer
       spacer <- gsub("[[:space:]]", "", toupper(input$spacer))
@@ -82,14 +92,16 @@ server <- function(input, output, session) {
       updateProgress("Step 1/6: Searching GGGenome API...")
       list <- tryCatch({
         suppressMessages({
-          gggenome_to_dataframe(spacer, input$seed_length, input$pam)
+          gggenome_to_dataframe(spacer, input$seed_length, input$pam, 
+                               full_mismatch = input$full_mismatch, 
+                               seed_mismatch = input$seed_mismatch)
         })
       }, error = function(e) {
-        stop(paste("Error querying GGGenome API:", e$message))
+        stop(paste("Error querying GGGenome API:", e$message), call. = FALSE)
       })
       
       if (nrow(list$plus_full) == 0 && nrow(list$minus_full) == 0) {
-        stop("No candidates found in GGGenome search. Try adjusting parameters.")
+        stop("No candidates found in GGGenome search. Try adjusting parameters.", call. = FALSE)
       }
       
       # Step 2: PAM filtering
@@ -99,7 +111,7 @@ server <- function(input, output, session) {
           filter_exact_pam(list, input$pam)
         })
       }, error = function(e) {
-        stop(paste("Error filtering PAM:", e$message))
+        stop(paste("Error filtering PAM:", e$message), call. = FALSE)
       })
       
       # Step 3: Overlap detection
@@ -109,7 +121,7 @@ server <- function(input, output, session) {
           find_overlaps(filtered_list)
         })
       }, error = function(e) {
-        stop(paste("Error detecting overlaps:", e$message))
+        stop(paste("Error detecting overlaps:", e$message), call. = FALSE)
       })
       
       # Step 4: Combine results
@@ -119,11 +131,11 @@ server <- function(input, output, session) {
           combine_results(overlaps)
         })
       }, error = function(e) {
-        stop(paste("Error combining results:", e$message))
+        stop(paste("Error combining results:", e$message), call. = FALSE)
       })
       
       if (nrow(combined_df) == 0) {
-        stop("No off-target candidates found after filtering.")
+        stop("No off-target candidates found after filtering.", call. = FALSE)
       }
       
       # Step 5: Gene annotation (optional, if annotation DBs are available)
@@ -186,7 +198,10 @@ server <- function(input, output, session) {
         pam = input$pam
       ))
       
-      showNotification("Analysis completed successfully!", type = "success")
+      showNotification("Analysis completed successfully!", type = "message")
+      
+      # Set flag to trigger tab switch
+      analysis_completed(TRUE)
       
     }, error = function(e) {
       showNotification(paste("Error:", e$message), type = "error", duration = 10)

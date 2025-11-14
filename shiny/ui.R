@@ -5,7 +5,7 @@ library(DT)
 ui <- dashboardPage(
   dashboardHeader(title = "OT Mapper"),
   dashboardSidebar(
-    sidebarMenu(
+    sidebarMenu(id = "sidebar",
       menuItem("Input", tabName = "input", icon = icon("edit")),
       menuItem("Results", tabName = "results", icon = icon("table")),
       menuItem("About", tabName = "about", icon = icon("info-circle"))
@@ -29,6 +29,16 @@ ui <- dashboardPage(
                        label = "Seed Sequence Length:",
                        min = 8, max = 12, value = 12, step = 1),
             helpText("Seed length: 8 to 12 nucleotides (inclusive)"),
+            
+            sliderInput("full_mismatch",
+                       label = "Full Sequence Mismatch Tolerance:",
+                       min = 0, max = 3, value = 3, step = 1),
+            helpText("Maximum number of mismatches allowed for full sequence search (0-3)"),
+            
+            sliderInput("seed_mismatch",
+                       label = "Seed Sequence Mismatch Tolerance:",
+                       min = 0, max = 3, value = 1, step = 1),
+            helpText("Maximum number of mismatches allowed for seed sequence search (0-3)"),
             
             selectInput("pam", 
                        label = "PAM Sequence:",
@@ -88,6 +98,8 @@ ui <- dashboardPage(
             tags$ol(
               tags$li("Enter a 20-nucleotide gRNA spacer sequence (without PAM)"),
               tags$li("Select seed length (8-12 nucleotides)"),
+              tags$li("Set mismatch tolerance for full sequence (0-3 mismatches)"),
+              tags$li("Set mismatch tolerance for seed sequence (0-3 mismatches)"),
               tags$li("Choose PAM sequence (default: NGG)"),
               tags$li("Click 'Run Analysis' and wait for results"),
               tags$li("View results in the Results tab and download as needed")

@@ -3,9 +3,11 @@
 #' @param spacer gRNAスペーサー配列（例："TCGCCCAGCGACCCTGCTCC"）
 #' @param seed_length シード配列の長さ
 #' @param pam PAM配列（例："NGG"）
+#' @param full_mismatch 全長配列の最大ミスマッチ数（デフォルト: 3）
+#' @param seed_mismatch シード配列の最大ミスマッチ数（デフォルト: 1）
 #' @param verbose 詳細出力を表示するか（デフォルト: TRUE、ShinyアプリではFALSE推奨）
 #' @return 全長データとシード配列データのリスト（+/-鎖）
-gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TRUE) {
+gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", full_mismatch = 3, seed_mismatch = 1, verbose = TRUE) {
   if (missing(spacer) || !is.character(spacer) || length(spacer) != 1) {
     stop("spacerは1つの文字列である必要があります")
   }
@@ -18,6 +20,18 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
     stop("pamは1つの文字列である必要があります")
   }
   
+  if (!is.numeric(full_mismatch) || full_mismatch < 0 || full_mismatch > 3) {
+    stop("full_mismatchは0から3の整数である必要があります")
+  }
+  
+  if (!is.numeric(seed_mismatch) || seed_mismatch < 0 || seed_mismatch > 3) {
+    stop("seed_mismatchは0から3の整数である必要があります")
+  }
+  
+  # ミスマッチ数を整数に変換
+  full_mismatch <- as.integer(full_mismatch)
+  seed_mismatch <- as.integer(seed_mismatch)
+  
   # スペーサーとPAMを結合
   sequence_with_pam <- paste0(spacer, pam)
   
@@ -28,6 +42,8 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
     cat("PAM: ", pam, "\n")
     cat("検索配列: ", sequence_with_pam, "\n")
     cat("シード長: ", seed_length, "\n")
+    cat("全長ミスマッチ許容数: ", full_mismatch, "\n")
+    cat("シードミスマッチ許容数: ", seed_mismatch, "\n")
   }
   
   # シード配列を抽出（スペーサーの3'末端側）
@@ -57,12 +73,12 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
   
   # GGGenome APIのURL（ヒトゲノムhg38、ミスマッチ設定）
   # PAMを含めた検索を行う
-  plus_full_url <- paste0("https://gggenome.dbcls.jp/hg38/3/+/nogap/", sequence_with_pam, ".csv")
-  minus_full_url <- paste0("https://gggenome.dbcls.jp/hg38/3/-/nogap/", sequence_with_pam, ".csv")
+  plus_full_url <- paste0("https://gggenome.dbcls.jp/hg38/", full_mismatch, "/+/nogap/", sequence_with_pam, ".csv")
+  minus_full_url <- paste0("https://gggenome.dbcls.jp/hg38/", full_mismatch, "/-/nogap/", sequence_with_pam, ".csv")
   
-  # シード配列のAPI URL（1ミスマッチまで許容、PAMを含む）
-  plus_seed_url <- paste0("https://gggenome.dbcls.jp/hg38/1/+/nogap/", seed_with_pam, ".csv")
-  minus_seed_url <- paste0("https://gggenome.dbcls.jp/hg38/1/-/nogap/", seed_with_pam, ".csv")
+  # シード配列のAPI URL（ミスマッチ許容数を指定、PAMを含む）
+  plus_seed_url <- paste0("https://gggenome.dbcls.jp/hg38/", seed_mismatch, "/+/nogap/", seed_with_pam, ".csv")
+  minus_seed_url <- paste0("https://gggenome.dbcls.jp/hg38/", seed_mismatch, "/-/nogap/", seed_with_pam, ".csv")
   
   if (verbose) {
     cat("GGGenome APIを呼び出し中...\n")
@@ -112,9 +128,9 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
   })
   
   # ダウンロードしたCSVファイルを処理する関数
-  process_gggenome_file <- function(file_path) {
+  process_gggenome_file <- function(file_path, verbose_param = verbose) {
     if (!file.exists(file_path) || file.size(file_path) == 0) {
-      if (verbose) cat("ファイルが存在しないか空です: ", file_path, "\n")
+      if (verbose_param) cat("ファイルが存在しないか空です: ", file_path, "\n")
       return(data.frame())
     }
     
@@ -125,7 +141,7 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
     data_lines <- lines[!grepl("^#", lines)]
     
     if (length(data_lines) == 0) {
-      if (verbose) cat("データ行が見つかりません\n")
+      if (verbose_param) cat("データ行が見つかりません\n")
       return(data.frame())
     }
     
@@ -142,7 +158,7 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
                      "snippet_end", "query", "sbjct", "align", "edit", "match", 
                      "mis", "del", "ins")
       
-      colnames(df) <- col_names[1:min(ncol(df), length(col_names))]
+      colnames(df) <- col_names[seq_len(min(ncol(df), length(col_names)))]
       
       # 数値型に変換
       for (col in c("start", "end", "match", "mis", "del", "ins")) {
@@ -158,7 +174,7 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
       
       df
     }, error = function(e) {
-      if (verbose) cat("ファイルの解析に失敗しました: ", e$message, "\n")
+      if (verbose_param) cat("ファイルの解析に失敗しました: ", e$message, "\n")
       return(data.frame())
     })
     
@@ -207,6 +223,17 @@ gggenome_to_dataframe <- function(spacer, seed_length, pam = "NGG", verbose = TR
 #' @param use_bedtools bedtoolsを使用するかどうか
 #' @return オーバーラップ結果を含むリスト（全長配列データを出力）
 find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
+  # 入力チェック
+  if (!is.logical(verbose) || length(verbose) != 1) {
+    verbose <- TRUE
+    warning("verboseは論理値である必要があります。デフォルト値TRUEを使用します。")
+  }
+  
+  if (!is.logical(use_bedtools) || length(use_bedtools) != 1) {
+    use_bedtools <- TRUE
+    warning("use_bedtoolsは論理値である必要があります。デフォルト値TRUEを使用します。")
+  }
+  
   if (verbose) cat("シード配列と全長配列のオーバーラップを検出中...\n")
   
   # 入力チェック
@@ -214,8 +241,22 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
     stop("listはgggenome_to_dataframe関数の結果である必要があります")
   }
   
+  # データフレームが存在することを確認
+  if (is.null(list$plus_full) || !is.data.frame(list$plus_full)) {
+    list$plus_full <- data.frame()
+  }
+  if (is.null(list$minus_full) || !is.data.frame(list$minus_full)) {
+    list$minus_full <- data.frame()
+  }
+  if (is.null(list$plus_seed) || !is.data.frame(list$plus_seed)) {
+    list$plus_seed <- data.frame()
+  }
+  if (is.null(list$minus_seed) || !is.data.frame(list$minus_seed)) {
+    list$minus_seed <- data.frame()
+  }
+  
   # bedtoolsのインストール確認
-  bedtools_installed <- use_bedtools && (system("which bedtools", ignore.stdout = TRUE) == 0)
+  bedtools_installed <- use_bedtools && (system("which bedtools", ignore.stdout = TRUE, ignore.stderr = TRUE) == 0)
   if (use_bedtools && !bedtools_installed) {
     if (verbose) cat("bedtoolsが見つかりません。Rの内部処理でオーバーラップを検出します。\n")
   }
@@ -227,8 +268,23 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
   if (verbose) cat("プラス鎖のオーバーラップを検出中...\n")
   plus_overlaps <- data.frame()
   
-  if (nrow(list$plus_full) > 0 && nrow(list$plus_seed) > 0) {
-    if (bedtools_installed) {
+  # 安全にnrow()をチェック
+  plus_full_nrow <- if (is.data.frame(list$plus_full)) nrow(list$plus_full) else 0
+  plus_seed_nrow <- if (is.data.frame(list$plus_seed)) nrow(list$plus_seed) else 0
+  
+  if (plus_full_nrow > 0 && plus_seed_nrow > 0) {
+    # 必要な列が存在することを確認
+    required_cols_full <- c("chrom", "start", "end", "strand")
+    required_cols_seed <- c("chrom", "start", "end", "strand")
+    
+    has_required_cols_full <- all(required_cols_full %in% colnames(list$plus_full))
+    has_required_cols_seed <- all(required_cols_seed %in% colnames(list$plus_seed))
+    
+    if (!has_required_cols_full) {
+      if (verbose) cat("警告: プラス鎖全長データに必要な列がありません\n")
+    } else if (!has_required_cols_seed) {
+      if (verbose) cat("警告: プラス鎖シードデータに必要な列がありません\n")
+    } else if (bedtools_installed) {
       # BEDファイル作成
       plus_full_bed <- file.path(temp_dir, "plus_full.bed")
       plus_seed_bed <- file.path(temp_dir, "plus_seed.bed")
@@ -240,8 +296,8 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
           list$plus_full$chrom,
           list$plus_full$start,
           list$plus_full$end,
-          paste0("full_", 1:nrow(list$plus_full)),
-          rep(0, nrow(list$plus_full)),
+          paste0("full_", 1:plus_full_nrow),
+          rep(0, plus_full_nrow),
           list$plus_full$strand
         ),
         plus_full_bed,
@@ -254,8 +310,8 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
           list$plus_seed$chrom,
           list$plus_seed$start,
           list$plus_seed$end,
-          paste0("seed_", 1:nrow(list$plus_seed)),
-          rep(0, nrow(list$plus_seed)),
+          paste0("seed_", 1:plus_seed_nrow),
+          rep(0, plus_seed_nrow),
           list$plus_seed$strand
         ),
         plus_seed_bed,
@@ -274,7 +330,7 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
         
         # 元のデータフレームから一致する行を抽出
         idx <- numeric(0)
-        for (i in 1:nrow(overlap_bed)) {
+        for (i in seq_len(nrow(overlap_bed))) {
           matches <- which(
             list$plus_full$chrom == overlap_bed$chrom[i] &
               list$plus_full$start == overlap_bed$start[i] &
@@ -301,7 +357,7 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
         current_batch <- list$plus_seed[start_idx:end_idx, ]
         
         # オーバーラップ検出 - 全長配列を収集
-        for (i in 1:nrow(current_batch)) {
+        for (i in seq_len(nrow(current_batch))) {
           # 重なりのある全長配列のインデックスを見つける
           overlap_idx <- which(
             list$plus_full$chrom == current_batch$chrom[i] &
@@ -336,8 +392,23 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
   if (verbose) cat("マイナス鎖のオーバーラップを検出中...\n")
   minus_overlaps <- data.frame()
   
-  if (nrow(list$minus_full) > 0 && nrow(list$minus_seed) > 0) {
-    if (bedtools_installed) {
+  # 安全にnrow()をチェック
+  minus_full_nrow <- if (is.data.frame(list$minus_full)) nrow(list$minus_full) else 0
+  minus_seed_nrow <- if (is.data.frame(list$minus_seed)) nrow(list$minus_seed) else 0
+  
+  if (minus_full_nrow > 0 && minus_seed_nrow > 0) {
+    # 必要な列が存在することを確認
+    required_cols_full <- c("chrom", "start", "end", "strand")
+    required_cols_seed <- c("chrom", "start", "end", "strand")
+    
+    has_required_cols_full <- all(required_cols_full %in% colnames(list$minus_full))
+    has_required_cols_seed <- all(required_cols_seed %in% colnames(list$minus_seed))
+    
+    if (!has_required_cols_full) {
+      if (verbose) cat("警告: マイナス鎖全長データに必要な列がありません\n")
+    } else if (!has_required_cols_seed) {
+      if (verbose) cat("警告: マイナス鎖シードデータに必要な列がありません\n")
+    } else if (bedtools_installed) {
       # BEDファイル作成
       minus_full_bed <- file.path(temp_dir, "minus_full.bed")
       minus_seed_bed <- file.path(temp_dir, "minus_seed.bed")
@@ -349,8 +420,8 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
           list$minus_full$chrom,
           list$minus_full$start,
           list$minus_full$end,
-          paste0("full_", 1:nrow(list$minus_full)),
-          rep(0, nrow(list$minus_full)),
+          paste0("full_", 1:minus_full_nrow),
+          rep(0, minus_full_nrow),
           list$minus_full$strand
         ),
         minus_full_bed,
@@ -363,8 +434,8 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
           list$minus_seed$chrom,
           list$minus_seed$start,
           list$minus_seed$end,
-          paste0("seed_", 1:nrow(list$minus_seed)),
-          rep(0, nrow(list$minus_seed)),
+          paste0("seed_", 1:minus_seed_nrow),
+          rep(0, minus_seed_nrow),
           list$minus_seed$strand
         ),
         minus_seed_bed,
@@ -383,7 +454,7 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
         
         # 元のデータフレームから一致する行を抽出
         idx <- numeric(0)
-        for (i in 1:nrow(overlap_bed)) {
+        for (i in seq_len(nrow(overlap_bed))) {
           matches <- which(
             list$minus_full$chrom == overlap_bed$chrom[i] &
               list$minus_full$start == overlap_bed$start[i] &
@@ -410,7 +481,7 @@ find_overlaps <- function(list, use_bedtools = TRUE, verbose = TRUE) {
         current_batch <- list$minus_seed[start_idx:end_idx, ]
         
         # オーバーラップ検出 - 全長配列を収集
-        for (i in 1:nrow(current_batch)) {
+        for (i in seq_len(nrow(current_batch))) {
           # 重なりのある全長配列のインデックスを見つける
           overlap_idx <- which(
             list$minus_full$chrom == current_batch$chrom[i] &
@@ -497,51 +568,79 @@ filter_exact_pam <- function(results, pam = "NGG", verbose = TRUE) {
   
   # PAM位置のミスマッチをチェックする関数
   check_pam_match <- function(df, strand, pam, spacer_length = NULL, verbose_param = verbose) {
-    if (nrow(df) == 0 || !("sbjct" %in% colnames(df)) || !("align" %in% colnames(df))) {
+    if (nrow(df) == 0 || !("sbjct" %in% colnames(df))) {
       if (verbose_param) cat(strand, "鎖のデータが空または必要な列がありません\n")
       return(data.frame())
     }
     
-    # alignmentからPAM部分のみを抽出
+    # sbjct列から直接PAM部分を抽出してチェック
     selected <- logical(nrow(df))
     
-    for (i in 1:nrow(df)) {
-      alignment <- df$align[i]
+    # PAMパターンを正規表現に変換（Nを任意の塩基に）
+    pam_pattern <- gsub("N", "[ATGC]", pam)
+    
+    # マイナス鎖の場合、PAMパターンも逆相補にする必要がある（一度だけ計算）
+    pam_pattern_revcomp <- NULL
+    if (strand == "-") {
+      # NGG -> CCN (逆相補: 逆順にして相補塩基に変換)
+      # 例: NGG -> GGN -> CCN
+      pam_chars <- strsplit(pam, "")[[1]]
+      pam_revcomp_chars <- character(length(pam_chars))
+      for (k in seq_along(pam_chars)) {
+        if (pam_chars[k] == "N") {
+          pam_revcomp_chars[length(pam_chars) - k + 1] <- "N"
+        } else {
+          pam_revcomp_chars[length(pam_chars) - k + 1] <- switch(
+            pam_chars[k],
+            "A" = "T",
+            "T" = "A",
+            "G" = "C",
+            "C" = "G",
+            pam_chars[k]
+          )
+        }
+      }
+      pam_revcomp <- paste0(pam_revcomp_chars, collapse = "")
+      pam_pattern_revcomp <- gsub("N", "[ATGC]", pam_revcomp)
+    }
+    
+    for (i in seq_len(nrow(df))) {
+      sbjct_seq <- toupper(df$sbjct[i])  # 大文字に変換
+      sbjct_len <- nchar(sbjct_seq)
       
-      # alignment文字列の長さがsbjctより短い場合があるため修正
-      if (nchar(alignment) < nchar(df$sbjct[i])) {
-        alignment <- paste0(alignment, paste(rep("?", nchar(df$sbjct[i]) - nchar(alignment)), collapse = ""))
+      if (sbjct_len < pam_length) {
+        selected[i] <- FALSE
+        next
       }
       
-      # PAM部分のalignmentを抽出
+      # PAM部分を抽出
       if (strand == "+") {
         # プラス鎖: 配列末尾にPAM
-        if (is.null(spacer_length)) {
-          # sbjctから末尾のPAM部分のみを抽出
-          pam_part <- substr(alignment, nchar(alignment) - pam_length + 1, nchar(alignment))
+        # spacer_lengthが指定されている場合はそれを使用、なければsbjctの末尾から
+        if (!is.null(spacer_length) && spacer_length > 0) {
+          if (sbjct_len >= spacer_length + pam_length) {
+            pam_part <- substr(sbjct_seq, spacer_length + 1, spacer_length + pam_length)
+          } else {
+            selected[i] <- FALSE
+            next
+          }
         } else {
-          # spacer_lengthが指定されている場合はそれを使用
-          pam_part <- substr(alignment, spacer_length + 1, spacer_length + pam_length)
+          # sbjctの末尾からPAM部分を抽出
+          pam_part <- substr(sbjct_seq, sbjct_len - pam_length + 1, sbjct_len)
         }
       } else {
-        # マイナス鎖: 配列先頭にPAM（逆相補配列）
-        pam_part <- substr(alignment, 1, pam_length)
+        # マイナス鎖: 配列先頭にPAM（逆相補配列なので、実際のPAMは逆相補になる）
+        # マイナス鎖の場合、sbjctは逆相補配列なので、先頭がPAM部分
+        pam_part <- substr(sbjct_seq, 1, pam_length)
       }
       
-      # PAM部分に完全一致（"="のみ）があるかチェック
-      # Nの位置は任意の塩基が許容されるので"X"や"="
-      is_match <- TRUE
-      for (j in 1:pam_length) {
-        pam_char <- substr(pam, j, j)
-        align_char <- substr(pam_part, j, j)
-        
-        if (pam_char == "N") {
-          # Nの場合は任意の塩基可
-          is_match <- is_match && (align_char %in% c("=", "X"))
-        } else {
-          # それ以外は完全一致が必要
-          is_match <- is_match && (align_char == "=")
-        }
+      # PAM部分がパターンに一致するかチェック
+      if (strand == "+") {
+        # プラス鎖: 正規表現でマッチング
+        is_match <- grepl(pam_pattern, pam_part)
+      } else {
+        # マイナス鎖: 逆相補パターンでマッチング
+        is_match <- grepl(pam_pattern_revcomp, pam_part)
       }
       
       selected[i] <- is_match
@@ -553,11 +652,17 @@ filter_exact_pam <- function(results, pam = "NGG", verbose = TRUE) {
     return(df[selected, ])
   }
   
+  # スペーサー長を取得（全長配列のフィルタリング用）
+  spacer_length <- NULL
+  if (!is.null(results$spacer)) {
+    spacer_length <- nchar(results$spacer)
+  }
+  
   # 結果構造に応じたフィルタリング
   if (is_overlaps_result) {
     # find_overlaps結果の処理
-    plus_filtered <- check_pam_match(results$plus_overlaps, "+", pam, verbose_param = verbose)
-    minus_filtered <- check_pam_match(results$minus_overlaps, "-", pam, verbose_param = verbose)
+    plus_filtered <- check_pam_match(results$plus_overlaps, "+", pam, spacer_length = spacer_length, verbose_param = verbose)
+    minus_filtered <- check_pam_match(results$minus_overlaps, "-", pam, spacer_length = spacer_length, verbose_param = verbose)
     
     # 元のメタデータを保持しつつ、フィルタリング結果を返す
     filtered_results <- results
@@ -566,10 +671,11 @@ filter_exact_pam <- function(results, pam = "NGG", verbose = TRUE) {
     filtered_results$pam_filtered <- TRUE
   } else {
     # gggenome_to_dataframe結果の処理
-    plus_full_filtered <- check_pam_match(results$plus_full, "+", pam, verbose_param = verbose)
-    minus_full_filtered <- check_pam_match(results$minus_full, "-", pam, verbose_param = verbose)
-    plus_seed_filtered <- check_pam_match(results$plus_seed, "+", pam, verbose_param = verbose)
-    minus_seed_filtered <- check_pam_match(results$minus_seed, "-", pam, verbose_param = verbose)
+    plus_full_filtered <- check_pam_match(results$plus_full, "+", pam, spacer_length = spacer_length, verbose_param = verbose)
+    minus_full_filtered <- check_pam_match(results$minus_full, "-", pam, spacer_length = spacer_length, verbose_param = verbose)
+    # シード配列の場合はspacer_lengthをNULLにして、末尾からPAMを抽出
+    plus_seed_filtered <- check_pam_match(results$plus_seed, "+", pam, spacer_length = NULL, verbose_param = verbose)
+    minus_seed_filtered <- check_pam_match(results$minus_seed, "-", pam, spacer_length = NULL, verbose_param = verbose)
     
     # 元のメタデータを保持しつつ、フィルタリング結果を返す
     filtered_results <- results
