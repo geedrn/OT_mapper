@@ -469,31 +469,40 @@ annotated_df <- annotate_with_bedtools(
 )
 ```
 
-#### Option 2: Command Line
+#### Option 2: Command Line (Complete Pipeline)
 
 ```bash
-# Basic usage with positional arguments (legacy)
 cd R
-Rscript scripts/analysis.R TCGCCCAGCGACCCTGCTCC 8 NGG results.tsv
 
-# Recommended: Use command-line options
-Rscript scripts/analysis.R -s GCTGAAGCACTGCACGCCGT -l 12
+# Complete pipeline (detection + annotation + primer generation)
+Rscript scripts/analysis.R -s TCGCCCAGCGACCCTGCTCC -l 12
+
+# Skip primer generation if not needed
+Rscript scripts/analysis.R -s TCGCCCAGCGACCCTGCTCC -l 12 --skip-primer
 
 # With all options
 Rscript scripts/analysis.R \
-  -s GCTGAAGCACTGCACGCCGT \
+  -s TCGCCCAGCGACCCTGCTCC \
   -l 12 \
   -p NGG \
   -g hg38 \
   -f 3 \
   -m 1 \
-  -e data/UCSC_exons_modif_canonical.bed \
-  -i data/UCSC_introns_modif_canonical.bed \
+  -e scripts/data/UCSC_exons_modif_canonical.bed \
+  -i scripts/data/UCSC_introns_modif_canonical.bed \
   -o results.tsv
+
+# Legacy positional arguments (still supported)
+Rscript scripts/analysis.R TCGCCCAGCGACCCTGCTCC 12 NGG results.tsv
 
 # Show help
 Rscript scripts/analysis.R -h
 ```
+
+**Note**: By default, `analysis.R` runs the complete pipeline:
+1. Off-target candidate detection
+2. Gene annotation mapping (automatic)
+3. Primer-BLAST link generation (automatic)
 
 **Command-Line Options**:
 - `-s, --spacer`: 20nt gRNA spacer sequence (without PAM) [required]
@@ -502,32 +511,65 @@ Rscript scripts/analysis.R -h
 - `-g, --genome`: Genome assembly [default: hg38]
 - `-f, --full-mismatch`: Mismatch tolerance for full sequence [default: 3]
 - `-m, --seed-mismatch`: Mismatch tolerance for seed sequence [default: 1]
-- `-e, --exon-db`: Exon annotation BED file [default: data/UCSC_exons_modif_canonical.bed]
-- `-i, --intron-db`: Intron annotation BED file [default: data/UCSC_introns_modif_canonical.bed]
+- `-e, --exon-db`: Exon annotation BED file [default: scripts/data/UCSC_exons_modif_canonical.bed]
+- `-i, --intron-db`: Intron annotation BED file [default: scripts/data/UCSC_introns_modif_canonical.bed]
 - `-o, --output`: Output file path [default: annotated_offtargets.tsv]
+- `--skip-primer`: Skip Primer-BLAST link generation [default: false]
 - `-h, --help`: Show help message
 
-**Legacy Positional Arguments** (still supported):
-- `spacer`: 20nt gRNA sequence (without PAM)
-- `seed_length`: Seed sequence length (8 to 12, inclusive)
-- `pam`: PAM sequence (default: "NGG")
-- `output_file`: Output file path (default: "annotated_offtargets.tsv")
+**Output Files**:
+- `{output_file}`: Annotated TSV with exon/intron information
+- `{output_file}_with_primer.tsv`: Final TSV with Primer-BLAST URLs (if not skipped)
 
 #### Option 3: Shiny Web Application
 
-```r
-# In R console
-library(shiny)
-runApp("scripts/")
+**Starting the Shiny App**:
+
+**Method 1: Using app.R (Recommended)**:
+```bash
+cd R/scripts
+Rscript -e "shiny::runApp(port=3838)"
 ```
 
-Then open your browser to the displayed URL (typically `http://127.0.0.1:XXXX`).
+**Method 2: Direct runApp**:
+```bash
+cd R/scripts
+Rscript -e "shiny::runApp('.', port=3838)"
+```
 
-The Shiny app provides:
+**Method 3: In R/RStudio**:
+```r
+# Set working directory to R/scripts
+setwd("R/scripts")
+
+# Load Shiny and run the app
+library(shiny)
+runApp(port = 3838)
+# Or simply: runApp() if app.R exists
+```
+
+Then open your browser to `http://localhost:3838` (or the URL displayed in the console).
+
+**Shiny App Features**:
 - Interactive input form for spacer sequence, seed length, and PAM
-- Real-time progress updates
-- Results table with download options
-- Export options for OT list, UCSC list, and BED files
+- Real-time progress updates during analysis
+- Results table with sortable columns
+- Download options:
+  - Summary table (CSV)
+  - Full results (CSV)
+  - Annotated results (TSV)
+- Summary statistics display
+
+**Requirements for Shiny App**:
+- R packages: `shiny`, `shinydashboard`, `DT`, `httr`, `readr`, `dplyr`, `stringr`, `GenomicRanges`
+- Internet connection (for GGGenome API)
+- bedtools (for overlap detection and annotation)
+- Annotation database files in `scripts/data/` directory
+
+**Install Shiny packages** (if not already installed):
+```r
+install.packages(c("shiny", "shinydashboard", "DT"))
+```
 
 ## Input/Output Details
 
@@ -591,7 +633,7 @@ These files are stored in `bash/data/` and `R/scripts/data/` directories.
 cd bash
 bash scripts/OT_detector.sh
 # Input when prompted:
-# Spacer: GCTGAAGCACTGCACGCCGT
+# Spacer: TCGCCCAGCGACCCTGCTCC
 # Seed: 12
 # The script will automatically run detection, annotation, and primer generation
 ```
@@ -600,16 +642,27 @@ bash scripts/OT_detector.sh
 
 ```bash
 cd bash
-bash scripts/OT_detector.sh -s GCTGAAGCACTGCACGCCGT -l 12
-bash scripts/OT_mapper.sh analysis/OT/OT_candidate.bed
-Rscript scripts/primer_generate.R -i analysis/OT_mapper_results/OT_mapped.tsv -o analysis/OT_mapper_results/OT_with_primer.tsv
+# Complete pipeline (automatic)
+bash scripts/OT_detector.sh -s TCGCCCAGCGACCCTGCTCC -l 12
 ```
 
 ### Example 2: R Command Line
 
 ```bash
 cd R
-Rscript scripts/analysis.R GCTGAAGCACTGCACGCCGT 12 NGG my_results.tsv
+# Complete pipeline (automatic)
+Rscript scripts/analysis.R -s TCGCCCAGCGACCCTGCTCC -l 12
+
+# Legacy positional arguments (still supported)
+Rscript scripts/analysis.R TCGCCCAGCGACCCTGCTCC 12 NGG my_results.tsv
+```
+
+### Example 3: R Shiny App
+
+```bash
+cd R/scripts
+Rscript -e "shiny::runApp(port=3838)"
+# Then open http://localhost:3838 in your browser
 ```
 
 ### Example 3: R Interactive

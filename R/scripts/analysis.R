@@ -119,6 +119,11 @@ option_list <- list(
               help = "Output file path [default: %default]",
               metavar = "FILE"),
   
+  make_option(c("--skip-primer"), 
+              action = "store_true", 
+              default = FALSE,
+              help = "Skip Primer-BLAST link generation [default: %default]"),
+  
   make_option(c("-h", "--help"), 
               action = "store_true", 
               default = FALSE,
@@ -128,8 +133,8 @@ option_list <- list(
 opt_parser <- OptionParser(
   option_list = option_list,
   usage = "usage: %prog [options] OR %prog <spacer> [seed_length] [pam] [output_file]",
-  description = "CRISPR Off-target Analysis - Complete pipeline for detecting and annotating off-target candidates",
-  epilogue = "Examples:\n  Rscript analysis.R -s GCTGAAGCACTGCACGCCGT -l 12\n  Rscript analysis.R -s GCTGAAGCACTGCACGCCGT -l 8 -p NGG -g hg38 -o results.tsv\n  Rscript analysis.R GCTGAAGCACTGCACGCCGT 12 NGG results.tsv  # Legacy positional args"
+  description = "CRISPR Off-target Analysis - Complete pipeline for detecting and annotating off-target candidates\n\nBy default, this script runs the complete pipeline:\n  1. Off-target candidate detection\n  2. Gene annotation mapping (automatic)\n  3. Primer-BLAST link generation (automatic)",
+  epilogue = "Examples:\n  Rscript analysis.R -s TCGCCCAGCGACCCTGCTCC -l 12\n  Rscript analysis.R -s TCGCCCAGCGACCCTGCTCC -l 8 -p NGG -g hg38 -o results.tsv\n  Rscript analysis.R -s TCGCCCAGCGACCCTGCTCC -l 12 --skip-primer  # Skip primer generation\n  Rscript analysis.R TCGCCCAGCGACCCTGCTCC 12 NGG results.tsv  # Legacy positional args"
 )
 
 opt <- parse_args(opt_parser, positional_arguments = TRUE)
@@ -433,8 +438,49 @@ main <- function() {
     "Failed to annotate candidates with gene information"
   )
   
+  # Step 6: Primer-BLAST link generation (if not skipped)
+  primer_output_file <- NULL
+  if (!opt$`skip-primer`) {
+    log_step("Step 6: Primer-BLAST Link Generation")
+    log_info("Generating Primer-BLAST URLs...")
+    
+    if (is.null(annotated_df) || nrow(annotated_df) == 0) {
+      log_warning("No annotated candidates found. Skipping primer generation.")
+      log_info("Primer-BLAST links require annotated candidates with chromosome coordinates.")
+    } else {
+      try_catch_with_message(
+        {
+          # Generate primer output filename
+          primer_output_file <- gsub("\\.tsv$", "_with_primer.tsv", output_file)
+          
+          # Source primer generation function
+          primer_script <- file.path(script_dir, "primer_generate.R")
+          if (!file.exists(primer_script)) {
+            log_warning("primer_generate.R not found. Skipping primer generation.")
+          } else {
+            # Load primer generation functions
+            source(primer_script, local = TRUE)
+            
+            # Generate primer links
+            generate_primer_blast_links(output_file, primer_output_file)
+            
+            if (file.exists(primer_output_file) && file.size(primer_output_file) > 0) {
+              primer_count <- length(readLines(primer_output_file)) - 1  # Subtract header
+              log_success(paste("Primer-BLAST links generated for", primer_count, "candidate(s)"))
+            } else {
+              log_warning("Primer-BLAST output file is empty")
+            }
+          }
+        },
+        "Failed during Primer-BLAST link generation"
+      )
+    }
+  } else {
+    log_info("Skipping Primer-BLAST link generation (--skip-primer specified)")
+  }
+  
   # Final summary
-  log_step("Analysis Complete")
+  log_step("Pipeline Complete")
   cat("\n")
   
   if (!is.null(annotated_df) && nrow(annotated_df) > 0) {
@@ -442,6 +488,10 @@ main <- function() {
     cat("  Off-target candidates detected:", nrow(combined_df), "\n")
     cat("  Annotated candidates:", nrow(annotated_df), "\n")
     cat("  Results saved to:", output_file, "\n")
+    
+    if (!is.null(primer_output_file) && file.exists(primer_output_file)) {
+      cat("  Primer-BLAST links:", primer_output_file, "\n")
+    }
     
     if (nrow(combined_df) > 0 && nrow(annotated_df) < nrow(combined_df)) {
       missing <- nrow(combined_df) - nrow(annotated_df)

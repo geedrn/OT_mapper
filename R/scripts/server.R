@@ -1,12 +1,56 @@
 library(shiny)
+library(shinydashboard)
+library(DT)
 library(httr)
 library(readr)
 library(dplyr)
 library(stringr)
-library(DT)
 library(GenomicRanges)
 
-source("gggenome_functions.R")
+# Source required scripts
+# Get script directory (works when sourced or run from RStudio)
+script_dir <- tryCatch({
+  # Try to get the directory of the current script
+  if (exists("RStudio.Version")) {
+    # Running in RStudio
+    rstudioapi::getActiveDocumentContext()$path
+  } else {
+    # Try commandArgs method
+    cmd_args <- commandArgs(trailingOnly = FALSE)
+    file_arg <- grep("--file=", cmd_args, value = TRUE)
+    if (length(file_arg) > 0) {
+      dirname(normalizePath(sub("--file=", "", file_arg)))
+    } else {
+      # Fallback: assume scripts are in the same directory
+      getwd()
+    }
+  }
+}, error = function(e) {
+  # Fallback to current working directory
+  getwd()
+})
+
+# If script_dir is a file path, get its directory
+if (file.exists(script_dir) && !dir.exists(script_dir)) {
+  script_dir <- dirname(script_dir)
+}
+
+# Ensure script_dir points to the scripts directory
+if (!file.exists(file.path(script_dir, "OT_mapper.R"))) {
+  # Try common locations
+  if (file.exists("R/scripts/OT_mapper.R")) {
+    script_dir <- "R/scripts"
+  } else if (file.exists("scripts/OT_mapper.R")) {
+    script_dir <- "scripts"
+  } else {
+    stop("Cannot find OT_mapper.R. Please set working directory to R/scripts or ensure scripts are accessible.")
+  }
+}
+
+# Source core functions
+source(file.path(script_dir, "OT_mapper.R"), local = TRUE)
+source(file.path(script_dir, "OT_annotator.R"), local = TRUE)
+source(file.path(script_dir, "primer_generate.R"), local = TRUE)
 
 server <- function(input, output, session) {
   results <- reactiveVal(NULL)
@@ -15,14 +59,13 @@ server <- function(input, output, session) {
     tryCatch({
       req(input$spacer, input$seed_length, input$pam)
       
-      # スペースを除去し、バリデーション
-      spacer <- clean_and_validate_input(input$spacer)
-      pam <- clean_and_validate_input(input$pam)
-
-      validate(need(nchar(spacer) == 20, "Error: Spacer must be 20 nt!"))
+      # Clean and validate spacer
+      spacer <- gsub("[[:space:]]", "", toupper(input$spacer))
       
-      spacer_and_pam <- paste0(spacer, input$pam)
-      seed <- substr(spacer_and_pam, ifelse(input$seed_length == 12, 9, 13), nchar(spacer_and_pam))
+      validate(
+        need(nchar(spacer) == 20, "Error: Spacer must be exactly 20 nucleotides!"),
+        need(grepl("^[ACGT]+$", spacer), "Error: Spacer must contain only A, C, G, T characters!")
+      )
       
       # Initialize progress
       progress <- shiny::Progress$new()
@@ -33,241 +76,154 @@ server <- function(input, output, session) {
         progress$inc(amount = 1/6, detail = detail)
       }
       
-      spacer_and_pam <- paste0(input$spacer, input$pam)
-      print(paste("Spacer and PAM:", spacer_and_pam))
-      
-      seed <- substr(spacer_and_pam, ifelse(input$seed_length == 12, 9, 13), 23)
-      print(paste("Seed:", seed))
-      
-      updateProgress("Downloading plus strand data")
-      
-      ot1_plus <- tryCatch({
-        process_gggenome(query_gggenome(spacer_and_pam, "+", 3), spacer_and_pam)
+      # Step 1: GGGenome search
+      updateProgress("Step 1/6: Searching GGGenome API...")
+      list <- tryCatch({
+        gggenome_to_dataframe(spacer, input$seed_length, input$pam)
       }, error = function(e) {
-        stop(paste("Error querying GGGenome for plus strand full sequence:", e$message))
+        stop(paste("Error querying GGGenome API:", e$message))
       })
       
-      ot2_plus <- tryCatch({
-        process_gggenome(query_gggenome(seed, "+", 1), seed)
+      if (nrow(list$plus_full) == 0 && nrow(list$minus_full) == 0) {
+        stop("No candidates found in GGGenome search. Try adjusting parameters.")
+      }
+      
+      # Step 2: PAM filtering
+      updateProgress("Step 2/6: Filtering PAM matches...")
+      filtered_list <- tryCatch({
+        filter_exact_pam(list, input$pam)
       }, error = function(e) {
-        stop(paste("Error querying GGGenome for plus strand seed sequence:", e$message))
+        stop(paste("Error filtering PAM:", e$message))
       })
       
-      updateProgress("Processing plus strand data")
-      
-      print("Plus strand data:")
-      print(paste("ot1_plus rows:", nrow(ot1_plus)))
-      print(paste("ot2_plus rows:", nrow(ot2_plus)))
-      
-      # Join plus strand results with sequence containment filtering using 'name', 'start', and 'end'
-      plus_strand <- tryCatch({
-        
-        # Ensure that columns 'name', 'start', and 'end' exist in both data frames
-        if (!all(c("name", "start", "end") %in% colnames(ot1_plus)) ||
-            !all(c("name", "start", "end") %in% colnames(ot2_plus))) {
-          stop("Required columns ('name', 'start', 'end') not found in one or both dataframes.")
-        }
-        
-        # Create GRanges objects from ot1_plus and ot2_plus
-        gr1 <- GRanges(
-          seqnames = ot1_plus$name,
-          ranges = IRanges(start = ot1_plus$start, end = ot1_plus$end),
-          strand = ot1_plus$strand
-        )
-        
-        gr2 <- GRanges(
-          seqnames = ot2_plus$name,
-          ranges = IRanges(start = ot2_plus$start, end = ot2_plus$end),
-          strand = ot2_plus$strand
-        )
-        
-        # Find overlaps between gr1 and gr2
-        overlaps <- findOverlaps(gr1, gr2)
-        
-        # Extract indices of overlapping ranges
-        ot1_indices <- queryHits(overlaps)
-        ot2_indices <- subjectHits(overlaps)
-        
-        # Get overlapping entries from ot1_plus and ot2_plus
-        ot1_plus_filtered <- ot1_plus[ot1_indices, ]
-        ot2_plus_filtered <- ot2_plus[ot2_indices, ]
-        
-        # Perform the join on 'name' and apply further filtering if needed
-        overlapping_results <- ot1_plus_filtered %>%
-          inner_join(ot2_plus_filtered, by = "name") %>%
-          filter(start.x <= start.y, end.y <= end.x, strand.x == strand.y)
-        
-        overlapping_results
-        
+      # Step 3: Overlap detection
+      updateProgress("Step 3/6: Detecting overlaps...")
+      overlaps <- tryCatch({
+        find_overlaps(filtered_list)
       }, error = function(e) {
-        stop(paste("Error joining filtered plus strand results:", e$message))
+        stop(paste("Error detecting overlaps:", e$message))
       })
       
-      print(paste("Filtered plus_strand rows after join:", nrow(plus_strand)))
-      
-      updateProgress("Downloading minus strand data")
-      
-      ot1_minus <- tryCatch({
-        process_gggenome(query_gggenome(spacer_and_pam, "-", 3), spacer_and_pam)
-      }, error = function(e) {
-        stop(paste("Error querying GGGenome for minus strand full sequence:", e$message))
-      })
-      
-      ot2_minus <- tryCatch({
-        process_gggenome(query_gggenome(seed, "-", 0), seed)
-      }, error = function(e) {
-        stop(paste("Error querying GGGenome for minus strand seed sequence:", e$message))
-      })
-      
-      updateProgress("Processing minus strand data")
-      
-      print("Minus strand data:")
-      print(paste("ot1_minus rows:", nrow(ot1_minus)))
-      print(paste("ot2_minus rows:", nrow(ot2_minus)))
-      
-      # Join minus strand results with sequence containment filtering using 'name', 'start', and 'end'
-      minus_strand <- tryCatch({
-        
-        # Ensure that columns 'name', 'start', and 'end' exist in both data frames
-        if (!all(c("name", "start", "end") %in% colnames(ot1_minus)) ||
-            !all(c("name", "start", "end") %in% colnames(ot2_minus))) {
-          stop("Required columns ('name', 'start', 'end') not found in one or both dataframes.")
-        }
-        
-        # Load the GenomicRanges package
-        if (!requireNamespace("GenomicRanges", quietly = TRUE)) {
-          install.packages("BiocManager")
-          BiocManager::install("GenomicRanges")
-        }
-        library(GenomicRanges)
-        
-        # Create GRanges objects from ot1_minus and ot2_minus
-        gr1 <- GRanges(
-          seqnames = ot1_minus$name,
-          ranges = IRanges(start = ot1_minus$start, end = ot1_minus$end),
-          strand = ot1_minus$strand
-        )
-        
-        gr2 <- GRanges(
-          seqnames = ot2_minus$name,
-          ranges = IRanges(start = ot2_minus$start, end = ot2_minus$end),
-          strand = ot2_minus$strand
-        )
-        
-        # Find overlaps between gr1 and gr2
-        overlaps <- findOverlaps(gr1, gr2)
-        
-        # Extract indices of overlapping ranges
-        ot1_indices <- queryHits(overlaps)
-        ot2_indices <- subjectHits(overlaps)
-        
-        # Get overlapping entries from ot1_minus and ot2_minus
-        ot1_minus_filtered <- ot1_minus[ot1_indices, ]
-        ot2_minus_filtered <- ot2_minus[ot2_indices, ]
-        
-        # Perform the join on 'name' and apply further filtering if needed
-        overlapping_results <- ot1_minus_filtered %>%
-          inner_join(ot2_minus_filtered, by = "name") %>%
-          filter(start.x <= start.y, end.y <= end.x, strand.x == strand.y)
-        
-        overlapping_results
-        
-      }, error = function(e) {
-        stop(paste("Error joining filtered minus strand results:", e$message))
-      })
-      
-      # Combine plus_strand and minus_strand results
-      ot_list <- tryCatch({
-        combined_results <- bind_rows(plus_strand, minus_strand)
-        combined_results
+      # Step 4: Combine results
+      updateProgress("Step 4/6: Combining results...")
+      combined_df <- tryCatch({
+        combine_results(overlaps)
       }, error = function(e) {
         stop(paste("Error combining results:", e$message))
       })
       
-      # After processing the data and before setting the results, add this code:
-      
-      print("Final Off-Target Sites:")
-      if(nrow(ot_list) > 0) {
-        summary_table <- ot_list %>%
-          mutate(
-            Chr = name,
-            Start = start.x,
-            End = end.x,
-            Strand = strand.x,
-            Sequence = sbjct.x,
-            Mismatches = edit.x
-          ) %>%
-          select(Chr, Start, End, Strand, Sequence, Mismatches) %>%
-          arrange(Mismatches, Chr, Start)
-        
-        print(summary_table)
-        
-        print(paste("Total off-target sites found:", nrow(summary_table)))
-        print("Mismatches distribution:")
-        print(table(summary_table$Mismatches))
-      } else {
-        print("No off-target sites found.")
+      if (nrow(combined_df) == 0) {
+        stop("No off-target candidates found after filtering.")
       }
       
-      # Then, modify the results() call to include this summary:
+      # Step 5: Gene annotation (optional, if annotation DBs are available)
+      updateProgress("Step 5/6: Annotating with gene information...")
+      annotated_df <- NULL
+      exon_db <- file.path(script_dir, "data/UCSC_exons_modif_canonical.bed")
+      intron_db <- file.path(script_dir, "data/UCSC_introns_modif_canonical.bed")
       
+      if (file.exists(exon_db) && file.exists(intron_db)) {
+        annotated_df <- tryCatch({
+          annotate_with_bedtools(combined_df, exon_db, intron_db, output_file = NULL)
+        }, error = function(e) {
+          warning(paste("Annotation failed:", e$message))
+          NULL
+        })
+      }
+      
+      # Step 6: Prepare summary table
+      updateProgress("Step 6/6: Preparing results...")
+      
+      # Create summary table
+      summary_table <- combined_df %>%
+        mutate(
+          Chromosome = chrom,
+          Start = start,
+          End = end,
+          Strand = ifelse("strand" %in% colnames(combined_df), strand, "+"),
+          Sequence = ifelse("sbjct" %in% colnames(combined_df), sbjct, ""),
+          Mismatches = ifelse("mis" %in% colnames(combined_df), mis, NA)
+        ) %>%
+        select(Chromosome, Start, End, Strand, Sequence, Mismatches) %>%
+        arrange(if("Mismatches" %in% colnames(.)) Mismatches else Chromosome, Chromosome, Start)
+      
+      # Store results
       results(list(
-        ot_list_final = ot_list,
-        summary_table = summary_table,  # Add this line
-        ucsc_list = if(nrow(ot_list) > 0) {
-          ot_list %>%
-            mutate(
-              ucsc = paste0(sbjct.x, ",", name, ":", start.x, "-", end.x)
-            ) %>%
-            select(ucsc)
-        } else {
-          data.frame(ucsc = character())
-        },
-        ot_candidate_bed = if(nrow(ot_list) > 0) {
-          ot_list %>%
-            select(name, start.x, end.x)
-        } else {
-          data.frame(name = character(), start = integer(), end = integer())
-        }
+        summary_table = summary_table,
+        combined_df = combined_df,
+        annotated_df = annotated_df,
+        spacer = spacer,
+        seed_length = input$seed_length,
+        pam = input$pam
       ))
       
-      # Finally, update the renderDT() function to use the summary table:
+      showNotification("Analysis completed successfully!", type = "success")
       
-      output$ot_table <- renderDT({
-        req(results())
-        datatable(results()$summary_table, options = list(pageLength = 10))
-      })
-      
-      updateProgress("Complete")
     }, error = function(e) {
-      showNotification(paste("Error:", e$message), type = "error")
+      showNotification(paste("Error:", e$message), type = "error", duration = 10)
       print(paste("Error:", e$message))
     })
   })
   
-  output$ot_table <- renderDT({
+  # Render results table
+  output$results_table <- renderDT({
     req(results())
-    datatable(results()$ot_list_final)
+    datatable(
+      results()$summary_table,
+      options = list(
+        pageLength = 25,
+        scrollX = TRUE,
+        order = list(list(5, 'asc'))  # Sort by mismatches if available
+      ),
+      rownames = FALSE
+    )
   })
   
-  output$download_ot <- downloadHandler(
-    filename = function() { "OT_list_final.csv" },
+  # Download handlers
+  output$download_summary <- downloadHandler(
+    filename = function() { 
+      paste0("OT_summary_", Sys.Date(), ".csv") 
+    },
     content = function(file) {
-      write_csv(results()$ot_list_final, file)
+      write.csv(results()$summary_table, file, row.names = FALSE)
     }
   )
   
-  output$download_ucsc <- downloadHandler(
-    filename = function() { "UCSC_list_final.csv" },
+  output$download_full <- downloadHandler(
+    filename = function() { 
+      paste0("OT_full_", Sys.Date(), ".csv") 
+    },
     content = function(file) {
-      write_csv(results()$ucsc_list, file)
+      write.csv(results()$combined_df, file, row.names = FALSE)
     }
   )
   
-  output$download_bed <- downloadHandler(
-    filename = function() { "OT_candidate.bed" },
+  output$download_annotated <- downloadHandler(
+    filename = function() { 
+      paste0("OT_annotated_", Sys.Date(), ".tsv") 
+    },
     content = function(file) {
-      write_tsv(results()$ot_candidate_bed, file, col_names = FALSE)
+      if (!is.null(results()$annotated_df) && nrow(results()$annotated_df) > 0) {
+        write.table(results()$annotated_df, file, row.names = FALSE, col.names = FALSE, sep = "\t")
+      } else {
+        write.table(data.frame(), file, row.names = FALSE, col.names = FALSE, sep = "\t")
+      }
     }
   )
+  
+  # Summary statistics
+  output$summary_stats <- renderText({
+    req(results())
+    r <- results()
+    total <- nrow(r$summary_table)
+    annotated <- if (!is.null(r$annotated_df)) nrow(r$annotated_df) else 0
+    
+    paste0(
+      "Total candidates: ", total, "\n",
+      "Annotated: ", annotated, "\n",
+      "Spacer: ", r$spacer, "\n",
+      "Seed length: ", r$seed_length, "\n",
+      "PAM: ", r$pam
+    )
+  })
 }

@@ -1,20 +1,11 @@
-# Load the necessary libraries
-library(optparse)
+# =============================================================================
+# Primer-BLAST Link Generation
+# =============================================================================
+# This script generates Primer-BLAST URLs for off-target candidates
+# Can be used as a function or as a standalone script
+# =============================================================================
 
-# Define the command line options
-option_list <- list(
-  make_option(c("-i", "--input"), type="character", help="Input file name"),
-  make_option(c("-o", "--output"), type="character", help="Output file name")
-)
-
-# Parse the command line options
-opt_parser <- OptionParser(option_list=option_list)
-opt <- parse_args(opt_parser)
-
-# Read the input file into a data frame
-table <- read.table(opt$input, header=FALSE, sep="\t")
-
-# Load the function
+# Chromosome to RefSeq ID conversion function
 convert_chr_to_refseq <- function(chr, ref_table) {
   refseq_id <- ref_table[match(chr, ref_table[, 1]), 2]
   if (is.na(refseq_id)) {
@@ -23,6 +14,7 @@ convert_chr_to_refseq <- function(chr, ref_table) {
   return(refseq_id)
 }
 
+# RefSeq ID mapping table
 ref_table <- read.table(text="
 chr1	NC_000001.11
 chr2	NC_000002.12
@@ -49,18 +41,59 @@ chr22	NC_000022.11
 chrX	NC_000023.11
 chrY	NC_000024.10", header = FALSE, stringsAsFactors = FALSE)
 
-# Apply the function to the first column of the data frame to get RefSeq IDs
-table$V1 <- sapply(table$V1, convert_chr_to_refseq, ref_table = ref_table)
-
-# Construct the Primer-BLAST URL for each row of the table
-urls <- character(nrow(table))
-for (i in 1:nrow(table)) {
-    url <- paste0("https://www.ncbi.nlm.nih.gov/tools/primer-blast/index.cgi?LINK_LOC=bookmark&INPUT_SEQUENCE=", table$V1[i], "&PRIMER5_START=", table$V2[i]-500, "&PRIMER5_END=", table$V2[i]-150, "&PRIMER3_START=", table$V3[i]+150, "&PRIMER3_END=", table$V3[i]+500, "&OVERLAP_5END=7&OVERLAP_3END=4&PRIMER_PRODUCT_MIN=400&PRIMER_PRODUCT_MAX=800&PRIMER_NUM_RETURN=10&PRIMER_MIN_TM=56&PRIMER_OPT_TM=58&PRIMER_MAX_TM=62&PRIMER_MAX_DIFF_TM=2&PRIMER_ON_SPLICE_SITE=0&SEARCHMODE=0&SPLICE_SITE_OVERLAP_5END=7&SPLICE_SITE_OVERLAP_3END=4&SPLICE_SITE_OVERLAP_3END_MAX=8&SPAN_INTRON=off&MIN_INTRON_SIZE=1000&MAX_INTRON_SIZE=1000000&SEARCH_SPECIFIC_PRIMER=on&EXCLUDE_ENV=on&EXCLUDE_XM=off&TH_OLOGO_ALIGNMENT=off&TH_TEMPLATE_ALIGNMENT=off&ORGANISM=Homo%20sapiens&PRIMER_SPECIFICITY_DATABASE=PRIMERDB/genome_selected_species&TOTAL_PRIMER_SPECIFICITY_MISMATCH=1&PRIMER_3END_SPECIFICITY_MISMATCH=1&MISMATCH_REGION_LENGTH=5&TOTAL_MISMATCH_IGNORE=6&MAX_TARGET_SIZE=4000&ALLOW_TRANSCRIPT_VARIANTS=off&HITSIZE=50000&EVALUE=30000&WORD_SIZE=7&MAX_CANDIDATE_PRIMER=500&PRIMER_MIN_SIZE=18&PRIMER_OPT_SIZE=22&PRIMER_MAX_SIZE=25&PRIMER_MIN_GC=20.0&PRIMER_MAX_GC=80.0&GC_CLAMP=1&NUM_TARGETS_WITH_PRIMERS=1000&NUM_TARGETS=20&MAX_TARGET_PER_TEMPLATE=100&POLYX=5&SELF_ANY=8.00&SELF_END=3.00&PRIMER_MAX_END_STABILITY=9&PRIMER_MAX_END_GC=2&PRIMER_MAX_TEMPLATE_MISPRIMING_TH=40.00&PRIMER_PAIR_MAX_TEMPLATE_MISPRIMING_TH=70.00&PRIMER_MAX_SELF_ANY_TH=45.0&PRIMER_MAX_SELF_END_TH=35.0&PRIMER_PAIR_MAX_COMPL_ANY_TH=45.0&PRIMER_PAIR_MAX_COMPL_END_TH=35.0&PRIMER_MAX_HAIRPIN_TH=24.0&PRIMER_MAX_TEMPLATE_MISPRIMING=12.00&PRIMER_PAIR_MAX_TEMPLATE_MISPRIMING=24.00&PRIMER_PAIR_MAX_COMPL_ANY=8.00&PRIMER_PAIR_MAX_COMPL_END=3.00&PRIMER_MISPRIMING_LIBRARY=repeat/repeat_9606&NO_SNP=on&LOW_COMPLEXITY_FILTER=on&MONO_CATIONS=50.0&DIVA_CATIONS=1.5&CON_ANEAL_OLIGO=50.0&CON_DNTPS=0.6&SALT_FORMULAR=1&TM_METHOD=1&PRIMER_INTERNAL_OLIGO_MIN_SIZE=18&PRIMER_INTERNAL_OLIGO_OPT_SIZE=20&PRIMER_INTERNAL_OLIGO_MAX_SIZE=27&PRIMER_INTERNAL_OLIGO_MIN_TM=57.0&PRIMER_INTERNAL_OLIGO_OPT_TM=60.0&PRIMER_INTERNAL_OLIGO_MAX_TM=63.0&PRIMER_INTERNAL_OLIGO_MAX_GC=80.0&PRIMER_INTERNAL_OLIGO_OPT_GC_PERCENT=50&PRIMER_INTERNAL_OLIGO_MIN_GC=20.0&PICK_HYB_PROBE=off&NEWWIN=on&NEWWIN=on&SHOW_SVIEWER=true")
+# Main function to generate Primer-BLAST links
+generate_primer_blast_links <- function(input_file, output_file) {
+  # Read the input file
+  if (!file.exists(input_file)) {
+    stop(paste("Input file not found:", input_file))
+  }
+  
+  table <- read.table(input_file, header=FALSE, sep="\t")
+  
+  if (nrow(table) == 0) {
+    warning("Input file is empty. Creating empty output file.")
+    write.table(data.frame(), output_file, row.names=FALSE, col.names=FALSE, sep="\t")
+    return(invisible(NULL))
+  }
+  
+  # Apply chromosome to RefSeq ID conversion
+  table$V1 <- sapply(table$V1, convert_chr_to_refseq, ref_table = ref_table)
+  
+  # Construct the Primer-BLAST URL for each row
+  urls <- character(nrow(table))
+  for (i in 1:nrow(table)) {
+    url <- paste0("https://www.ncbi.nlm.nih.gov/tools/primer-blast/index.cgi?LINK_LOC=bookmark&INPUT_SEQUENCE=", 
+                  table$V1[i], "&PRIMER5_START=", table$V2[i]-500, "&PRIMER5_END=", table$V2[i]-150, 
+                  "&PRIMER3_START=", table$V3[i]+150, "&PRIMER3_END=", table$V3[i]+500, 
+                  "&OVERLAP_5END=7&OVERLAP_3END=4&PRIMER_PRODUCT_MIN=400&PRIMER_PRODUCT_MAX=800&PRIMER_NUM_RETURN=10&PRIMER_MIN_TM=56&PRIMER_OPT_TM=58&PRIMER_MAX_TM=62&PRIMER_MAX_DIFF_TM=2&PRIMER_ON_SPLICE_SITE=0&SEARCHMODE=0&SPLICE_SITE_OVERLAP_5END=7&SPLICE_SITE_OVERLAP_3END=4&SPLICE_SITE_OVERLAP_3END_MAX=8&SPAN_INTRON=off&MIN_INTRON_SIZE=1000&MAX_INTRON_SIZE=1000000&SEARCH_SPECIFIC_PRIMER=on&EXCLUDE_ENV=on&EXCLUDE_XM=off&TH_OLOGO_ALIGNMENT=off&TH_TEMPLATE_ALIGNMENT=off&ORGANISM=Homo%20sapiens&PRIMER_SPECIFICITY_DATABASE=PRIMERDB/genome_selected_species&TOTAL_PRIMER_SPECIFICITY_MISMATCH=1&PRIMER_3END_SPECIFICITY_MISMATCH=1&MISMATCH_REGION_LENGTH=5&TOTAL_MISMATCH_IGNORE=6&MAX_TARGET_SIZE=4000&ALLOW_TRANSCRIPT_VARIANTS=off&HITSIZE=50000&EVALUE=30000&WORD_SIZE=7&MAX_CANDIDATE_PRIMER=500&PRIMER_MIN_SIZE=18&PRIMER_OPT_SIZE=22&PRIMER_MAX_SIZE=25&PRIMER_MIN_GC=20.0&PRIMER_MAX_GC=80.0&GC_CLAMP=1&NUM_TARGETS_WITH_PRIMERS=1000&NUM_TARGETS=20&MAX_TARGET_PER_TEMPLATE=100&POLYX=5&SELF_ANY=8.00&SELF_END=3.00&PRIMER_MAX_END_STABILITY=9&PRIMER_MAX_END_GC=2&PRIMER_MAX_TEMPLATE_MISPRIMING_TH=40.00&PRIMER_PAIR_MAX_TEMPLATE_MISPRIMING_TH=70.00&PRIMER_MAX_SELF_ANY_TH=45.0&PRIMER_MAX_SELF_END_TH=35.0&PRIMER_PAIR_MAX_COMPL_ANY_TH=45.0&PRIMER_PAIR_MAX_COMPL_END_TH=35.0&PRIMER_MAX_HAIRPIN_TH=24.0&PRIMER_MAX_TEMPLATE_MISPRIMING=12.00&PRIMER_PAIR_MAX_TEMPLATE_MISPRIMING=24.00&PRIMER_PAIR_MAX_COMPL_ANY=8.00&PRIMER_PAIR_MAX_COMPL_END=3.00&PRIMER_MISPRIMING_LIBRARY=repeat/repeat_9606&NO_SNP=on&LOW_COMPLEXITY_FILTER=on&MONO_CATIONS=50.0&DIVA_CATIONS=1.5&CON_ANEAL_OLIGO=50.0&CON_DNTPS=0.6&SALT_FORMULAR=1&TM_METHOD=1&PRIMER_INTERNAL_OLIGO_MIN_SIZE=18&PRIMER_INTERNAL_OLIGO_OPT_SIZE=20&PRIMER_INTERNAL_OLIGO_MAX_SIZE=27&PRIMER_INTERNAL_OLIGO_MIN_TM=57.0&PRIMER_INTERNAL_OLIGO_OPT_TM=60.0&PRIMER_INTERNAL_OLIGO_MAX_TM=63.0&PRIMER_INTERNAL_OLIGO_MAX_GC=80.0&PRIMER_INTERNAL_OLIGO_OPT_GC_PERCENT=50&PRIMER_INTERNAL_OLIGO_MIN_GC=20.0&PICK_HYB_PROBE=off&NEWWIN=on&NEWWIN=on&SHOW_SVIEWER=true")
     urls[i] <- url
+  }
+  
+  # Add the URLs to the output table
+  table$V6 <- urls
+  
+  # Write the output table to a file
+  write.table(table, output_file, row.names=FALSE, col.names=FALSE, sep="\t")
 }
 
-# Add the URLs to the output table
-table$V6 <- urls
-
-# Write the output table to a file
-write.table(table, opt$output, row.names=FALSE, col.names=FALSE, sep="\t")
+# If run as a script (not sourced), execute the main logic
+if (!interactive() && length(commandArgs(trailingOnly = TRUE)) > 0) {
+  library(optparse)
+  
+  # Define the command line options
+  option_list <- list(
+    make_option(c("-i", "--input"), type="character", help="Input file name"),
+    make_option(c("-o", "--output"), type="character", help="Output file name")
+  )
+  
+  # Parse the command line options
+  opt_parser <- OptionParser(option_list=option_list)
+  opt <- parse_args(opt_parser)
+  
+  if (is.null(opt$input) || is.null(opt$output)) {
+    print_help(opt_parser)
+    stop("Both input and output files must be specified")
+  }
+  
+  generate_primer_blast_links(opt$input, opt$output)
+}
