@@ -70,19 +70,26 @@ annotate_with_bedtools <- function(combined_df, exon_db, intron_db, output_file 
   
   # bedtools intersectを実行
   cmd <- paste("bedtools intersect -a", temp_bed, "-b", temp_combined_db, "-wa -wb >", temp_result)
-  message("実行コマンド: ", cmd)
+  # Use print() instead of message() for Shiny compatibility
+  if (!is.null(output_file)) {
+    print(paste("実行コマンド: ", cmd))
+  }
   
   status <- system(cmd)
   
   if (status != 0) {
-    warning("bedtools実行中にエラーが発生しました")
+    if (!is.null(output_file)) {
+      print("Warning: bedtools実行中にエラーが発生しました")
+    }
     return(NULL)
   }
   
   # 結果を読み込む
   if (file.exists(temp_result) && file.size(temp_result) > 0) {
     result_data <- read.table(temp_result, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
-    message(paste("アノテーション完了:", nrow(result_data), "件"))
+    if (!is.null(output_file)) {
+      print(paste("アノテーション完了:", nrow(result_data), "件"))
+    }
     
     # 結果を出力（指定がある場合）
     if (!is.null(output_file)) {
@@ -91,7 +98,7 @@ annotate_with_bedtools <- function(combined_df, exon_db, intron_db, output_file 
                   sep = "\t", 
                   row.names = FALSE, 
                   col.names = FALSE)
-      message(paste("結果を保存しました:", output_file))
+      print(paste("結果を保存しました:", output_file))
     }
     
     # 一時ファイルを削除
@@ -99,7 +106,9 @@ annotate_with_bedtools <- function(combined_df, exon_db, intron_db, output_file 
     
     return(result_data)
   } else {
-    message("アノテーション結果は空でした")
+    if (!is.null(output_file)) {
+      print("アノテーション結果は空でした")
+    }
     unlink(c(temp_bed, temp_combined_db, temp_result))
     return(data.frame())
   }

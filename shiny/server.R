@@ -135,7 +135,10 @@ server <- function(input, output, session) {
           print("Warning: bedtools not found. Gene annotation skipped.")
         } else {
           annotated_df <- tryCatch({
-            annotate_with_bedtools(combined_df, exon_db, intron_db, output_file = NULL)
+            # Suppress print() output in Shiny app (output_file=NULL means no file output)
+            suppressMessages({
+              annotate_with_bedtools(combined_df, exon_db, intron_db, output_file = NULL)
+            })
           }, error = function(e) {
             showNotification(paste("Annotation failed:", e$message), 
                             type = "warning", duration = 5)
