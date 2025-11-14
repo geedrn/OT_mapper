@@ -334,7 +334,13 @@ Rscript -e "install.packages(c('DT', 'shiny', 'shinydashboard'), repos='https://
 #### Using Homebrew (macOS)
 
 ```bash
+# Install bedtools
 brew install bedtools
+
+# Verify installation
+which bedtools
+bedtools --version
+
 # R packages can be installed via R console or Rscript
 ```
 
@@ -566,7 +572,10 @@ Then open your browser to `http://localhost:3838` (or the URL displayed in the c
 **Requirements for Shiny App**:
 - R packages: `shiny`, `shinydashboard`, `DT`, `httr`, `readr`, `dplyr`, `stringr`, `GenomicRanges`
 - Internet connection (for GGGenome API)
-- bedtools (for overlap detection and annotation)
+- **bedtools** (for overlap detection and annotation)
+  - Install via Homebrew: `brew install bedtools`
+  - Or via Conda: `conda install -c bioconda bedtools`
+  - Verify: `which bedtools` should show the path
 - Annotation database files in `R/scripts/data/` directory (relative to project root)
 
 **Install Shiny packages** (if not already installed):
