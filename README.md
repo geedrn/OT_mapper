@@ -454,11 +454,42 @@ annotated_df <- annotate_with_bedtools(
 #### Option 2: Command Line
 
 ```bash
+# Basic usage with positional arguments (legacy)
 cd R
 Rscript scripts/analysis.R TCGCCCAGCGACCCTGCTCC 8 NGG results.tsv
+
+# Recommended: Use command-line options
+Rscript scripts/analysis.R -s GCTGAAGCACTGCACGCCGT -l 12
+
+# With all options
+Rscript scripts/analysis.R \
+  -s GCTGAAGCACTGCACGCCGT \
+  -l 12 \
+  -p NGG \
+  -g hg38 \
+  -f 3 \
+  -m 1 \
+  -e data/UCSC_exons_modif_canonical.bed \
+  -i data/UCSC_introns_modif_canonical.bed \
+  -o results.tsv
+
+# Show help
+Rscript scripts/analysis.R -h
 ```
 
-**Arguments**:
+**Command-Line Options**:
+- `-s, --spacer`: 20nt gRNA spacer sequence (without PAM) [required]
+- `-l, --seed-length`: Seed sequence length: 8 to 12 (inclusive) [default: 12]
+- `-p, --pam`: PAM sequence [default: NGG]
+- `-g, --genome`: Genome assembly [default: hg38]
+- `-f, --full-mismatch`: Mismatch tolerance for full sequence [default: 3]
+- `-m, --seed-mismatch`: Mismatch tolerance for seed sequence [default: 1]
+- `-e, --exon-db`: Exon annotation BED file [default: data/UCSC_exons_modif_canonical.bed]
+- `-i, --intron-db`: Intron annotation BED file [default: data/UCSC_introns_modif_canonical.bed]
+- `-o, --output`: Output file path [default: annotated_offtargets.tsv]
+- `-h, --help`: Show help message
+
+**Legacy Positional Arguments** (still supported):
 - `spacer`: 20nt gRNA sequence (without PAM)
 - `seed_length`: Seed sequence length (8 to 12, inclusive)
 - `pam`: PAM sequence (default: "NGG")
