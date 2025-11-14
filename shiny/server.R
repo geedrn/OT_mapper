@@ -81,7 +81,9 @@ server <- function(input, output, session) {
       # Step 1: GGGenome search
       updateProgress("Step 1/6: Searching GGGenome API...")
       list <- tryCatch({
-        gggenome_to_dataframe(spacer, input$seed_length, input$pam)
+        suppressMessages({
+          gggenome_to_dataframe(spacer, input$seed_length, input$pam)
+        })
       }, error = function(e) {
         stop(paste("Error querying GGGenome API:", e$message))
       })
@@ -93,7 +95,9 @@ server <- function(input, output, session) {
       # Step 2: PAM filtering
       updateProgress("Step 2/6: Filtering PAM matches...")
       filtered_list <- tryCatch({
-        filter_exact_pam(list, input$pam)
+        suppressMessages({
+          filter_exact_pam(list, input$pam)
+        })
       }, error = function(e) {
         stop(paste("Error filtering PAM:", e$message))
       })
@@ -101,7 +105,9 @@ server <- function(input, output, session) {
       # Step 3: Overlap detection
       updateProgress("Step 3/6: Detecting overlaps...")
       overlaps <- tryCatch({
-        find_overlaps(filtered_list)
+        suppressMessages({
+          find_overlaps(filtered_list)
+        })
       }, error = function(e) {
         stop(paste("Error detecting overlaps:", e$message))
       })
@@ -109,7 +115,9 @@ server <- function(input, output, session) {
       # Step 4: Combine results
       updateProgress("Step 4/6: Combining results...")
       combined_df <- tryCatch({
-        combine_results(overlaps)
+        suppressMessages({
+          combine_results(overlaps)
+        })
       }, error = function(e) {
         stop(paste("Error combining results:", e$message))
       })
