@@ -592,7 +592,9 @@ The tool uses GENCODE V39 annotation files (UCSC-derived, modified BED format):
 - `UCSC_exons_modif_canonical.bed`: Exon annotations
 - `UCSC_introns_modif_canonical.bed`: Intron annotations
 
-These files are stored in `bash/data/` and `R/scripts/data/` directories.
+These files are stored in:
+- `bash/data/` - for Bash scripts
+- `R/scripts/data/` - for R scripts and Shiny app
 
 ### Output Files
 
