@@ -8,22 +8,24 @@ A tool for identifying CRISPR-Cas9 off-target (OT) candidates and annotating the
 
 ### 🚀 Super Easy Method (Just Double-Click!)
 
+**Before first use**, please install:
+- **R**: Download from https://cran.r-project.org/ or install via Homebrew: `brew install --cask r`
+- **Homebrew** (optional, but recommended): Visit https://brew.sh/ or run:
+  ```bash
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  ```
+
 1. **Double-click `OT_Mapper.command`** in Finder (in the project root)
    - If you see a security warning, right-click → Open → Open
 
 2. **That's it!** The app will open in your browser automatically.
 
 The launcher will automatically:
-- ✅ Check if R is installed (install via Homebrew if available)
-- ✅ Check if Homebrew is installed (offer to install if not)
+- ✅ Check if R is installed
+- ✅ Check if Homebrew is installed
 - ✅ Install missing R packages
 - ✅ Check for bedtools and install it automatically (via Homebrew or Conda if available)
 - ✅ Launch the web interface
-
-**Note**: If R is not installed, the launcher will:
-- Try to install R via Homebrew if Homebrew is available
-- Offer to install Homebrew if it's not installed
-- Provide manual installation instructions if needed
 
 **Need help?** See the [Troubleshooting](#troubleshooting) section below.
 
