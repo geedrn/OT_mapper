@@ -50,16 +50,37 @@ if ! command -v bedtools &> /dev/null; then
     echo "bedtools is required for gene annotation. The app will work but"
     echo "annotation features will be disabled."
     echo ""
-    echo "To install bedtools:"
-    echo "  - macOS: brew install bedtools"
-    echo "  - Linux: sudo apt-get install bedtools"
-    echo "  - Or use conda: conda install -c bioconda bedtools"
-    echo ""
-    read -p "Continue anyway? (y/n) " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+    
+    # Try to install bedtools automatically
+    if command -v brew &> /dev/null; then
+        echo "Attempting to install bedtools via Homebrew..."
+        if brew install bedtools; then
+            echo -e "${GREEN}✓${NC} bedtools installed successfully"
+        else
+            echo -e "${YELLOW}⚠ Failed to install bedtools automatically${NC}"
+            echo "You can install it manually later: brew install bedtools"
+        fi
+    elif command -v conda &> /dev/null; then
+        echo "Attempting to install bedtools via Conda..."
+        if conda install -c bioconda bedtools -y; then
+            echo -e "${GREEN}✓${NC} bedtools installed successfully"
+        else
+            echo -e "${YELLOW}⚠ Failed to install bedtools automatically${NC}"
+            echo "You can install it manually later: conda install -c bioconda bedtools"
+        fi
+    else
+        echo "To install bedtools:"
+        echo "  - macOS: brew install bedtools"
+        echo "  - Linux: sudo apt-get install bedtools"
+        echo "  - Or use conda: conda install -c bioconda bedtools"
+        echo ""
+        read -p "Continue anyway? (y/n) " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
     fi
+    echo ""
 else
     echo -e "${GREEN}✓${NC} bedtools is installed: $(bedtools --version | head -n 1)"
 fi

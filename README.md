@@ -6,26 +6,32 @@ A tool for identifying CRISPR-Cas9 off-target (OT) candidates and annotating the
 
 **Want to use the web interface?** (Easiest option - no R knowledge required!)
 
+### 🚀 Super Easy Method (Just Double-Click!)
+
 1. **Install R** (if not already installed):
    - Download from https://cran.r-project.org/
-   - macOS: Also install Xcode Command Line Tools: `xcode-select --install`
+   - Also install Xcode Command Line Tools: `xcode-select --install`
 
-2. **Launch the Shiny App**:
-   ```bash
-   cd shiny
-   bash run_app.sh    # macOS/Linux
-   # or double-click run_app.bat on Windows
-   ```
+2. **Double-click `OT_Mapper.command`** in Finder (in the project root)
+   - If you see a security warning, right-click → Open → Open
 
 3. **That's it!** The app will open in your browser automatically.
 
-The launcher script will automatically:
-- Check if R is installed
-- Install missing R packages
-- Check for bedtools (optional, for gene annotation)
-- Launch the web interface
+The launcher will automatically:
+- ✅ Check if R is installed
+- ✅ Install missing R packages
+- ✅ Check for bedtools and install it automatically (via Homebrew or Conda if available)
+- ✅ Launch the web interface
 
 **Need help?** See the [Troubleshooting](#troubleshooting) section below.
+
+### Alternative: Command Line Method
+
+If double-click doesn't work, you can run from terminal:
+```bash
+cd shiny
+bash run_app.sh
+```
 
 ## Overview
 
@@ -273,12 +279,12 @@ OT_mapper/
 │   │   └── gggenome_functions.R  # GGGenome API helpers
 │   └── data/               # Annotation BED files
 │
+├── OT_Mapper.command        # 🚀 Double-click launcher (macOS) - RECOMMENDED
 ├── shiny/                   # Shiny web application
 │   ├── app.R               # Shiny app entry point
 │   ├── server.R             # Shiny app server logic
 │   ├── ui.R                 # Shiny app user interface
-│   ├── run_app.sh          # Easy launcher script (macOS/Linux)
-│   └── run_app.bat          # Easy launcher script (Windows)
+│   └── run_app.sh           # Command-line launcher
 │
 └── README.md               # This file
 ```
@@ -561,26 +567,25 @@ Rscript scripts/analysis.R -h
 
 **Easy Launch (Recommended for beginners)**:
 
-**macOS/Linux**:
-```bash
-cd shiny
-bash run_app.sh
-```
-Or simply double-click `run_app.sh` (after making it executable with `chmod +x run_app.sh`)
+### 🎯 Just Double-Click! (Easiest Method)
 
-**Windows**:
-```cmd
-cd shiny
-run_app.bat
-```
-Or simply double-click `run_app.bat`
+- Double-click `OT_Mapper.command` in Finder (project root)
+- If you see a security warning, right-click → Open → Open
 
-The launcher script will:
+The launcher will automatically:
 - ✅ Check if R is installed
 - ✅ Check if bedtools is installed
 - ✅ Automatically install missing R packages
 - ✅ Check for annotation database files
 - ✅ Launch the app in your default browser
+
+### Alternative: Command Line Method
+
+If double-click doesn't work, you can run from terminal:
+```bash
+cd shiny
+bash run_app.sh
+```
 
 **Manual Launch (Advanced users)**:
 
@@ -786,18 +791,15 @@ annotated <- annotate_with_bedtools(
 ### Common Issues
 
 1. **"R is not installed or not in PATH"**
-   - **macOS**: Download R from https://cran.r-project.org/ and install. Make sure to add R to PATH during installation.
-   - **Linux**: `sudo apt-get install r-base` (Ubuntu/Debian) or `sudo yum install R` (CentOS/RHEL)
-   - **Windows**: Download R from https://cran.r-project.org/ and make sure to check "Add R to PATH" during installation
-   - Verify installation: Open terminal/command prompt and type `Rscript --version`
+   - Download R from https://cran.r-project.org/ and install
+   - Make sure to add R to PATH during installation
+   - Verify installation: Open terminal and type `Rscript --version`
 
 2. **"bedtools not found"**
-   - **macOS**: `brew install bedtools`
-   - **Linux**: `sudo apt-get install bedtools` (Ubuntu/Debian) or `sudo yum install bedtools` (CentOS/RHEL)
-   - **Windows**: Download from https://bedtools.readthedocs.io/en/latest/content/installation.html
+   - **Homebrew**: `brew install bedtools`
    - **Conda**: `conda install -c bioconda bedtools`
-   - Verify: `which bedtools` (macOS/Linux) or `where bedtools` (Windows)
-   - **Note**: The app will work without bedtools, but gene annotation features will be disabled
+   - Verify: `which bedtools`
+   - **Note**: The app will work without bedtools, but gene annotation features will be disabled. The launcher will try to install it automatically if Homebrew or Conda is available.
 
 3. **"Package installation failed"**
    - Check internet connection
