@@ -31,10 +31,32 @@ echo ""
 if ! command -v Rscript &> /dev/null; then
     echo -e "${RED}✗ Error: R is not installed${NC}"
     echo ""
-    echo "Please install R first:"
+    
+    # Check if Homebrew is available
+    if command -v brew &> /dev/null; then
+        echo "Homebrew is available. Attempting to install R via Homebrew..."
+        echo ""
+        if brew install --cask r; then
+            echo -e "${GREEN}✓${NC} R installed successfully via Homebrew"
+            echo ""
+            echo "Please restart this launcher after R installation completes."
+            echo ""
+            echo "Press any key to exit..."
+            read -n 1
+            exit 0
+        else
+            echo -e "${YELLOW}⚠ Failed to install R via Homebrew${NC}"
+            echo ""
+        fi
+    fi
+    
+    echo "Please install R manually:"
     echo "  1. Visit: https://cran.r-project.org/"
     echo "  2. Download and install R for macOS"
     echo "  3. Make sure to add R to your PATH"
+    echo ""
+    echo "Or install Homebrew first, then R will be installed automatically:"
+    echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
     echo ""
     echo "Press any key to exit..."
     read -n 1
@@ -42,6 +64,44 @@ if ! command -v Rscript &> /dev/null; then
 fi
 
 echo -e "${GREEN}✓${NC} R is installed"
+echo ""
+
+# Check if Homebrew is installed (for bedtools installation later)
+if ! command -v brew &> /dev/null; then
+    echo -e "${YELLOW}⚠ Homebrew not found${NC}"
+    echo "  Homebrew is useful for installing bedtools automatically."
+    echo ""
+    read -p "  Would you like to install Homebrew now? (y/n) " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "Installing Homebrew..."
+        echo "This may take a few minutes..."
+        echo ""
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        
+        # Add Homebrew to PATH (for Apple Silicon Macs)
+        if [[ -f "/opt/homebrew/bin/brew" ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        elif [[ -f "/usr/local/bin/brew" ]]; then
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
+        
+        if command -v brew &> /dev/null; then
+            echo -e "${GREEN}✓${NC} Homebrew installed successfully"
+        else
+            echo -e "${YELLOW}⚠ Homebrew installation may require a terminal restart${NC}"
+            echo "  Please restart this launcher after installation completes."
+            echo ""
+            echo "Press any key to exit..."
+            read -n 1
+            exit 0
+        fi
+    fi
+    echo ""
+else
+    echo -e "${GREEN}✓${NC} Homebrew is installed"
+fi
 echo ""
 
 # Check if bedtools is installed (optional)
