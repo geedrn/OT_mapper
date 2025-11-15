@@ -2,6 +2,31 @@
 
 A tool for identifying CRISPR-Cas9 off-target (OT) candidates and annotating them with gene information (exon/intron). This software provides both **Bash** and **R** implementations for flexible usage.
 
+## Quick Start (For Beginners)
+
+**Want to use the web interface?** (Easiest option - no R knowledge required!)
+
+1. **Install R** (if not already installed):
+   - Download from https://cran.r-project.org/
+   - macOS: Also install Xcode Command Line Tools: `xcode-select --install`
+
+2. **Launch the Shiny App**:
+   ```bash
+   cd shiny
+   bash run_app.sh    # macOS/Linux
+   # or double-click run_app.bat on Windows
+   ```
+
+3. **That's it!** The app will open in your browser automatically.
+
+The launcher script will automatically:
+- Check if R is installed
+- Install missing R packages
+- Check for bedtools (optional, for gene annotation)
+- Launch the web interface
+
+**Need help?** See the [Troubleshooting](#troubleshooting) section below.
+
 ## Overview
 
 **Purpose**: Identify off-target candidates for CRISPR-Cas9 gRNA (SpCas9/NGG), annotate them with gene information (exon/intron), and generate Primer-BLAST links for primer design.
@@ -251,7 +276,9 @@ OT_mapper/
 ├── shiny/                   # Shiny web application
 │   ├── app.R               # Shiny app entry point
 │   ├── server.R             # Shiny app server logic
-│   └── ui.R                 # Shiny app user interface
+│   ├── ui.R                 # Shiny app user interface
+│   ├── run_app.sh          # Easy launcher script (macOS/Linux)
+│   └── run_app.bat          # Easy launcher script (Windows)
 │
 └── README.md               # This file
 ```
@@ -532,9 +559,32 @@ Rscript scripts/analysis.R -h
 
 #### Option 3: Shiny Web Application
 
-**Starting the Shiny App**:
+**Easy Launch (Recommended for beginners)**:
 
-**Method 1: Using app.R (Recommended)**:
+**macOS/Linux**:
+```bash
+cd shiny
+bash run_app.sh
+```
+Or simply double-click `run_app.sh` (after making it executable with `chmod +x run_app.sh`)
+
+**Windows**:
+```cmd
+cd shiny
+run_app.bat
+```
+Or simply double-click `run_app.bat`
+
+The launcher script will:
+- ✅ Check if R is installed
+- ✅ Check if bedtools is installed
+- ✅ Automatically install missing R packages
+- ✅ Check for annotation database files
+- ✅ Launch the app in your default browser
+
+**Manual Launch (Advanced users)**:
+
+**Method 1: Using app.R**:
 ```bash
 cd shiny
 Rscript -e "shiny::runApp(port=3838)"
@@ -735,22 +785,59 @@ annotated <- annotate_with_bedtools(
 
 ### Common Issues
 
-1. **"bedtools not found"**
-   - Install bedtools: `conda install bedtools` or `brew install bedtools`
-   - Verify: `which bedtools`
+1. **"R is not installed or not in PATH"**
+   - **macOS**: Download R from https://cran.r-project.org/ and install. Make sure to add R to PATH during installation.
+   - **Linux**: `sudo apt-get install r-base` (Ubuntu/Debian) or `sudo yum install R` (CentOS/RHEL)
+   - **Windows**: Download R from https://cran.r-project.org/ and make sure to check "Add R to PATH" during installation
+   - Verify installation: Open terminal/command prompt and type `Rscript --version`
 
-2. **"GGGenome download failed"**
+2. **"bedtools not found"**
+   - **macOS**: `brew install bedtools`
+   - **Linux**: `sudo apt-get install bedtools` (Ubuntu/Debian) or `sudo yum install bedtools` (CentOS/RHEL)
+   - **Windows**: Download from https://bedtools.readthedocs.io/en/latest/content/installation.html
+   - **Conda**: `conda install -c bioconda bedtools`
+   - Verify: `which bedtools` (macOS/Linux) or `where bedtools` (Windows)
+   - **Note**: The app will work without bedtools, but gene annotation features will be disabled
+
+3. **"Package installation failed"**
+   - Check internet connection
+   - Try installing packages manually in R:
+     ```r
+     install.packages(c("shiny", "shinydashboard", "DT", "httr", "readr", "dplyr", "stringr"))
+     # For GenomicRanges (Bioconductor):
+     if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+     BiocManager::install("GenomicRanges")
+     ```
+   - If you're behind a firewall/proxy, configure R to use it
+
+4. **"Shiny app won't start"**
+   - Make sure you're in the `shiny` directory: `cd shiny`
+   - Check if port 3838 is already in use: Try a different port by editing `run_app.sh` and changing `port=3838` to `port=3839`
+   - Check R console for error messages
+   - Try running manually: `Rscript -e "shiny::runApp(port=3838)"`
+
+5. **"GGGenome download failed"**
    - Check internet connection
    - Verify GGGenome API is accessible: `curl https://gggenome.dbcls.jp/hg38/3/+/nogap/TCGCCCAGCGACCCTGCTCCNGG.csv`
+   - If you're behind a firewall/proxy, configure R to use it
 
-3. **"No annotations found"**
-   - Verify annotation BED files exist in `data/` directory
+6. **"No annotations found"**
+   - Verify annotation BED files exist in `R/scripts/data/` directory
    - Check file paths in scripts
    - Some candidates may not overlap with exons/introns (check `OT_candidate.bed`)
+   - The app will show a warning if annotation files are missing
 
-4. **"Primer generation error"**
+7. **"Primer generation error"**
    - Verify `OT_mapped.tsv` column order (chr, start, end in first 3 columns)
    - Check RefSeq ID conversion table in `primer_generate.R`
+
+### Getting Help
+
+If you encounter issues not listed here:
+1. Check the error message carefully - it often contains helpful information
+2. Make sure all dependencies are installed (R, bedtools, R packages)
+3. Verify you're using the correct file paths
+4. Check that you have internet connection (required for GGGenome API)
 
 ## Contributions and Citations
 
